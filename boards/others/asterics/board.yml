@@ -1,0 +1,5 @@
+board:
+  name: asterics
+  full_name: AsterICS
+  socs:
+  - name: stm32h723xx

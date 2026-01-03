@@ -1,0 +1,57 @@
+/dts-v1/;
+#include <st/h7/stm32h723.dtsi>
+#include <st/h7/stm32h723zgtx-pinctrl.dtsi>
+
+/ {
+    model = "AsterICS";
+    compatible = "asterics";
+
+    chosen {
+        zephyr,console = &usart1;
+        zephyr,shell-uart = &usart1;
+        zephyr,sram = &sram0;
+        zephyr,flash = &flash0;
+    };
+
+};
+
+&sram0 {
+    reg = <0x24000000 DT_SIZE_K(320)>;
+};
+
+&flash0 {
+    reg = <0x08000000 DT_SIZE_K(1024)>;
+};
+
+&clk_hse {
+    clock-frequency = <DT_FREQ_M(48)>;
+    status = "okay";
+};
+
+&pll {
+    div-m = <24>;
+    mul-n = <275>;
+    div-p = <1>;
+    div-q = <4>;
+    div-r = <2>;
+    clocks = <&clk_hse>;
+    status = "okay";
+};
+
+&rcc {
+    clocks = <&pll>;
+    clock-frequency = <DT_FREQ_M(550)>; /* CPU Core Clock */
+    d1cpre = <1>;
+    hpre = <2>;
+    d1ppre = <2>;
+    d2ppre1 = <2>;
+    d2ppre2 = <2>;
+    d3ppre = <2>;
+};
+
+&usart1 {
+    pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+    status = "okay";
+};

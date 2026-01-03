@@ -1,0 +1,2 @@
+config BOARD_ASTERICS
+    select SOC_STM32H723XX
