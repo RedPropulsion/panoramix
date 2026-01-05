@@ -13,6 +13,13 @@
         zephyr,flash = &flash0;
     };
 
+    leds {
+        compatible = "gpio-leds";
+        my_led: led_0 {
+            gpios = <&gpiog 0 GPIO_ACTIVE_HIGH>;
+            label = "My LED";
+        };
+    };
 };
 
 &sram0 {
@@ -50,8 +57,16 @@
 };
 
 &usart1 {
-    pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+    pinctrl-0 = <&usart1_tx_pb14 &usart1_rx_pb15>;
     pinctrl-names = "default";
     current-speed = <115200>;
+    status = "okay";
+};
+
+&gpiob {
+    status = "okay";
+};
+
+&gpiog {
     status = "okay";
 };
