@@ -15,9 +15,33 @@
 
     leds {
         compatible = "gpio-leds";
-        my_led: led_0 {
+        led_mcu_1: led_mcu_1 {
+            gpios = <&gpiob 4 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 1";
+        };
+        led_mcu_2: led_mcu_2 {
+            gpios = <&gpiog 15 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 2";
+        };
+        led_mcu_3: led_mcu_3 {
+            gpios = <&gpiog 14 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 3";
+        };
+        led_mcu_4: led_mcu_4 {
+            gpios = <&gpiog 13 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 4";
+        };
+        led_mcu_5: led_mcu_5 {
+            gpios = <&gpioe 10 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 5";
+        };
+        led_mcu_6: led_mcu_6 {
+            gpios = <&gpiob 1 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 6";
+        };
+        led_mcu_7: led_mcu_7 {
             gpios = <&gpiog 0 GPIO_ACTIVE_HIGH>;
-            label = "My LED";
+            label = "LED MCU 7";
         };
     };
 };
@@ -64,6 +88,10 @@
 };
 
 &gpiob {
+    status = "okay";
+};
+
+&gpioe {
     status = "okay";
 };
 
