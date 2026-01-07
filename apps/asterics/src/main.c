@@ -1,9 +1,11 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
-#include <zephyr/sys/printk.h>
 
 #include <stddef.h>
+
+LOG_MODULE_REGISTER(main);
 
 const struct gpio_dt_spec leds[] = {
     GPIO_DT_SPEC_GET(DT_NODELABEL(led_mcu_1), gpios),
@@ -26,7 +28,7 @@ int main(void) {
 
   while (1) {
     for (size_t i = 0; i < (sizeof leds) / (sizeof leds[0]); i++) {
-      printk("Setting led %d!\n", i + 1);
+      LOG_INF("Setting led %d!", i + 1);
       gpio_pin_set_dt(&leds[i], 1);
 
       k_sleep(K_MSEC(1000));
@@ -35,7 +37,7 @@ int main(void) {
     k_sleep(K_MSEC(1000));
 
     for (size_t i = 0; i < (sizeof leds) / (sizeof leds[0]); i++) {
-      printk("Resetting led %d!\n", i + 1);
+      LOG_INF("Resetting led %d!", i + 1);
       gpio_pin_set_dt(&leds[i], 0);
 
       k_sleep(K_MSEC(1000));
@@ -53,7 +55,7 @@ void k_sys_fatal_error_handler(unsigned int reason,
   LOG_PANIC();
 
   while (1) {
-    printk("I'M PANICKING\n");
+    LOG_ERR("I'M PANICKING");
     gpio_pin_toggle_dt(&error_led);
     k_busy_wait(500 * 1000);
   }
