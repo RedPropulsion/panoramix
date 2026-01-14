@@ -1,0 +1,3 @@
+if SENSOR
+rsource "ms5611/Kconfig"
+endif # SENSOR

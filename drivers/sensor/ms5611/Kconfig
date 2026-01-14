@@ -1,0 +1,5 @@
+config SENSOR_MS5611
+	bool "MS5611 barometric pressure and temperature sensor"
+	depends on DT_HAS_AMS_MS5611_ENABLED
+	select SPI
+	default y

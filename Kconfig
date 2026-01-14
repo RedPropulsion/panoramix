@@ -1,0 +1,3 @@
+## Note: this file is included by `zephyr/module.yml`
+
+rsource "drivers/Kconfig"

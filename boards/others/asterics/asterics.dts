@@ -80,18 +80,44 @@
     d3ppre = <2>;
 };
 
+&spi5 {
+    status = "okay";
+
+    pinctrl-0 = <&spi5_sck_pf7 &spi5_miso_pf8 &spi5_mosi_pf11>;
+    pinctrl-names = "default";
+
+    cs-gpios = <&gpiod 11 GPIO_ACTIVE_LOW>;
+
+    mcu_ms5611: ms5611@0 {
+        status = "okay";
+
+        compatible = "ams,ms5611";
+        reg = <0x0>;
+        spi-max-frequency = <1000000>;
+    };
+};
+
 &usart1 {
+    status = "okay";
+
     pinctrl-0 = <&usart1_tx_pb14 &usart1_rx_pb15>;
     pinctrl-names = "default";
     current-speed = <115200>;
-    status = "okay";
 };
 
 &gpiob {
     status = "okay";
 };
 
+&gpiod {
+    status = "okay";
+};
+
 &gpioe {
+    status = "okay";
+};
+
+&gpiof {
     status = "okay";
 };
 

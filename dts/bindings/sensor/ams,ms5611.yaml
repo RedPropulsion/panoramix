@@ -1,0 +1,5 @@
+description: |
+  Amsys Temperature and Pressure sensor accessed with SPI
+
+compatible: "ams,ms5611"
+include: [sensor-device.yaml, spi-device.yaml]

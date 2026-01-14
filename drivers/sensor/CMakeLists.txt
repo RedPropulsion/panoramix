@@ -1,0 +1,1 @@
+add_subdirectory_ifdef(CONFIG_SENSOR_MS5611 ms5611)
