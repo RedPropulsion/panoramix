@@ -1,0 +1,84 @@
+{
+    "settings": {
+        "cortex-debug.openocdPath.linux": "/usr/bin/openocd",
+        "cortex-debug.armToolchainPath.linux": "${userHome}/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
+        "cortex-debug.gdbPath.linux": "${userHome}/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+        //"cortex-debug.stlinkPath.linux": , //TODO: check where the stlink is located
+
+        "cmake.sourceDirectory": "${workspaceFolder}/panoramix.git/apps/asterics",
+        "terminal.integrated.cwd":  "${workspaceFolder}",
+
+        //intellisense
+        "C_Cpp.default.compilerPath": "${userHome}/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics/build/compile_commands.json"
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "west build",
+                "command": "${workspaceFolder}/.venv/bin/west",
+                "type": "shell",
+                "args": [
+                    "build",
+                    "${workspaceFolder}/panoramix/panoramix.git/apps/asterics",
+                    "-b",
+                    "asterics",
+                    "-p",
+                    "auto"
+                ],
+                "options": {
+                    "cwd": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics"
+                },
+                "group": {
+                    "kind": "build",
+                    "isDefault": true
+                },
+                "problemMatcher": "$gcc"
+            },
+            {
+				"label": "west flash",
+				"type": "shell",
+				"command": "${workspaceFolder}/.venv/bin/west",
+				"args": [
+					"flash"
+				],
+				"problemMatcher": [
+					"$gcc"
+				]
+			}
+        ]
+    },
+    "launch": {
+        "configurations": [
+            {
+                "name": "debug",
+                "type": "cortex-debug",
+                "request": "launch",
+                "servertype": "openocd",
+                "cwd": "${workspaceFolder}",
+                "executable": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics/build/zephyr.elf", //TODO: correct?
+                "device": "STM32H723",
+                "preLaunchTask": "west build"
+                /*"configFiles": [
+                    "target/.cfg" // TODO: needed?
+                ]
+                */
+            }
+        ]
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-vscode.cpptools-extension-pack",
+            "ms-vscode.vscode-embedded-tools",
+            "ms-vscode.vscode-serial-monitor",
+            "marus25.cortex-debug",
+            "ms-python.python"
+        ]
+    },
+    "folders": [
+        {
+            "path": "."
+        }
+    ]
+}
