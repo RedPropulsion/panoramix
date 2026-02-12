@@ -56,7 +56,6 @@
 
 &clk_hse {
     clock-frequency = <DT_FREQ_M(48)>;
-    hse-bypass; //no bypass
     status = "okay";
 };
 
@@ -127,6 +126,12 @@
     pinctrl-0 = <&spi5_sck_pf7 &spi5_miso_pf8 &spi5_mosi_pf11>;
     pinctrl-names = "default";
 
+    /* * Sintassi: <&rcc MACRO_BUS_CLOCK BIT_MASK>,
+     * <&rcc MACRO_SOURCE_CLOCK SELECTION_VAL>
+     */
+    clocks = <&rcc STM32_CLOCK(APB2, 20)>,
+            <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
+
     cs-gpios = <&gpiod 11 GPIO_ACTIVE_LOW>;
 
     mcu_ms5611: ms5611@0 {
@@ -150,17 +155,16 @@
     status = "okay";
     pinctrl-0 = <&adc1_inp9_pb0 &adc1_inp8_pc5>;
     
-    pinctrl-names = "default";
+    pinctrl-names = "default"; 
+    resolutions = <16>;
+
     st,adc-clock-source = "ASYNC";
     st,adc-prescaler = <4>;
 
-    resolutions = <16>;
 
     sampling-times = <33>; // FIXME: random magic number, check in cubemx
     st,adc-sequencer = "fixed";
     
-    status = "okay";
-
     #address-cells = <1>;
     #size-cells = <0>;
 
