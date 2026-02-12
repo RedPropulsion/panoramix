@@ -56,15 +56,46 @@
 
 &clk_hse {
     clock-frequency = <DT_FREQ_M(48)>;
+    hse-bypass; //no bypass
+    status = "okay";
+};
+
+&clk_lse {
+    driving-capability = <2>;
     status = "okay";
 };
 
 &pll {
-    div-m = <24>;
-    mul-n = <275>;
+    div-m = <3>;
+    mul-n = <34>;
     div-p = <1>;
-    div-q = <4>;
-    div-r = <2>;
+    div-q = <10>;
+    div-r = <11>;
+    fracn = <3072>;
+    clocks = <&clk_hse>;
+    status = "okay";
+};
+
+&pll2 {
+    div-m = <3>;
+    mul-n = <12>;
+    div-p = <3>;
+    div-q = <3>;
+    div-r = <3>;
+    fracn = <0>;
+
+    clocks = <&clk_hse>;
+    status = "okay";
+};
+
+&pll3 {
+    div-m = <3>;
+    mul-n = <12>;
+    div-p = <3>;
+    div-q = <3>;
+    div-r = <3>;
+    fracn = <0>;
+
     clocks = <&clk_hse>;
     status = "okay";
 };
@@ -72,12 +103,22 @@
 &rcc {
     clocks = <&pll>;
     clock-frequency = <DT_FREQ_M(550)>; /* CPU Core Clock */
-    d1cpre = <1>;
-    hpre = <2>;
-    d1ppre = <2>;
-    d2ppre1 = <2>;
-    d2ppre2 = <2>;
-    d3ppre = <2>;
+    d1cpre = <1>;   // sets the CPU clock, same as systick
+    hpre = <2>;     // 275MHz to AXI, HCLK3, AHB1, AHB2, AHB4
+    d1ppre = <2>;   //137.5MHz to APB3 peripheral clocks
+    d2ppre1 = <2>;  //137.5MHz to APB1 peripheral clocks
+    d2ppre2 = <2>;  //137.5MHz to APB2 peripheral clocks
+    d3ppre = <2>;   //137.5MHz to APB4 peripheral clocks
+    //APB1 timer clocks = APB1 clock * 2 = 275MHz
+    //APB2 timer clocks = APB2 clock * 2 = 275MHz
+};
+
+&mco1 {
+    clocks = <&rcc STM32_SRC_LSE MCO1_SEL(MCO1_SEL_LSE)>;
+    prescaler = <MCO1_PRE(MCO_PRE_DIV_1)>;
+    pinctrl-0 = <&rcc_mco_1_pa8>;
+    pinctrl-names = "default";
+    status = "okay";
 };
 
 &spi5 {
@@ -105,7 +146,52 @@
     current-speed = <115200>;
 };
 
+&adc1 {
+    status = "okay";
+    pinctrl-0 = <&adc1_inp9_pb0 &adc1_inp8_pc5>;
+    
+    pinctrl-names = "default";
+    st,adc-clock-source = "ASYNC";
+    st,adc-prescaler = <4>;
+
+    resolutions = <16>;
+
+    sampling-times = <33>; // FIXME: random magic number, check in cubemx
+    st,adc-sequencer = "fixed";
+    
+    status = "okay";
+
+    #address-cells = <1>;
+    #size-cells = <0>;
+
+    channel@8 {
+        reg = <8>;
+        zephyr,gain = "ADC_GAIN_1";
+        zephyr,reference = "ADC_REF_INTERNAL";
+        zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+        zephyr,resolution = <12>;
+        // PC5
+    };
+
+    channel@9 {
+        reg = <9>;
+        zephyr,gain = "ADC_GAIN_1";
+        zephyr,reference = "ADC_REF_INTERNAL";
+        zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+        zephyr,resolution = <12>;
+        //label = "PB0";
+    };
+};
+
+&gpioa {
+    status = "okay";
+};
+
 &gpiob {
+    status = "okay";
+};
+
+&gpioc {
     status = "okay";
 };
 
