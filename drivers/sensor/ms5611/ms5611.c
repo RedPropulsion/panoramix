@@ -17,8 +17,8 @@
 LOG_MODULE_REGISTER(ms5611, CONFIG_SENSOR_LOG_LEVEL);
 
 struct ms5611_sample {
-  struct sensor_value pressure;
-  struct sensor_value temperature;
+  int32_t pressure;
+  int32_t temperature;
 };
 
 struct ms5611_data {
@@ -30,38 +30,13 @@ struct ms5611_config {
   struct spi_dt_spec spi;
 };
 
-/* static int ms5611_read_PROM(struct spi_dt_spec *spi, uint8_t offset, */
-/*                             uint16_t *result) { */
-/*   uint8_t command = COMMAND_PROM_READ | (offset << 1); */
-/*   uint8_t tx_buf[3] = {command, 0x00, 0x00}; // command + 2 dummy bytes */
-/*   uint8_t rx_buf[3] = {0}; */
-/**/
-/*   const struct spi_buf tx = {.buf = tx_buf, .len = 3}; */
-/*   const struct spi_buf rx = {.buf = rx_buf, .len = 3}; */
-/*   const struct spi_buf_set tx_bufs = {.buffers = &tx, .count = 1}; */
-/*   const struct spi_buf_set rx_bufs = {.buffers = &rx, .count = 1}; */
-/**/
-/*   int ret = spi_transceive_dt(spi, &tx_bufs, &rx_bufs); */
-/*   if (ret < 0) { */
-/*     LOG_ERR("Failed to read PROM (offset=%d): %d (%s)", offset, ret, */
-/*             strerror(-ret)); */
-/*     return ret; */
-/*   } */
-/**/
-/*   // Data is in rx_buf[1] and rx_buf[2] (rx_buf[0] is garbage during command)
- */
-/*   *result = sys_get_be16(&rx_buf[1]); */
-/*   return 0; */
-/* } */
-
 static int ms5611_read_PROM(struct spi_dt_spec *spi, uint8_t offset,
                             uint16_t *result) {
-  // Try WITHOUT the shift first - addresses are 0xA0, 0xA2, 0xA4...
   uint8_t command = COMMAND_PROM_READ | (offset << 1);
   uint8_t tx_buf[3] = {command, 0x00, 0x00};
   uint8_t rx_buf[3] = {0};
 
-  LOG_INF("Reading PROM offset %d, command byte: 0x%02X", offset, command);
+  LOG_DBG("Reading PROM offset %d, command byte: 0x%02X", offset, command);
 
   const struct spi_buf tx = {.buf = tx_buf, .len = 3};
   const struct spi_buf rx = {.buf = rx_buf, .len = 3};
@@ -75,21 +50,19 @@ static int ms5611_read_PROM(struct spi_dt_spec *spi, uint8_t offset,
     return ret;
   }
 
-  LOG_HEXDUMP_INF(rx_buf, 3, "PROM RX:");
-
   *result = sys_get_be16(&rx_buf[1]);
-  LOG_INF("PROM[%d] = 0x%04X", offset, *result);
+  LOG_DBG("PROM[%d] = 0x%04X", offset, *result);
   return 0;
 }
 
 static int ms5611_read_ADC(const struct spi_dt_spec *spi, uint32_t *result) {
-  uint8_t command = COMMAND_ADC_READ;
-  uint8_t raw_rx[3] = {0, 0, 0};
+  uint8_t tx_buf[4] = {COMMAND_ADC_READ, 0x0, 0x0, 0x0};
+  uint8_t rx_buf[4] = {0};
 
-  const struct spi_buf tx_buf = {.buf = &command, .len = 1};
-  const struct spi_buf rx_buf = {.buf = raw_rx, .len = 3};
-  const struct spi_buf_set tx_bufs = {.buffers = &tx_buf, .count = 1};
-  const struct spi_buf_set rx_bufs = {.buffers = &rx_buf, .count = 1};
+  const struct spi_buf tx = {.buf = tx_buf, .len = 4};
+  const struct spi_buf rx = {.buf = rx_buf, .len = 4};
+  const struct spi_buf_set tx_bufs = {.buffers = &tx, .count = 1};
+  const struct spi_buf_set rx_bufs = {.buffers = &rx, .count = 1};
 
   int ret = spi_transceive_dt(spi, &tx_bufs, &rx_bufs);
   if (ret < 0) {
@@ -97,7 +70,10 @@ static int ms5611_read_ADC(const struct spi_dt_spec *spi, uint32_t *result) {
     return ret;
   }
 
-  *result = sys_get_be24(raw_rx);
+  LOG_HEXDUMP_INF(&rx_buf[1], 3, "ADC: ");
+
+  // Discard first byte
+  *result = sys_get_be24(&rx_buf[1]);
   return 0;
 }
 
@@ -107,7 +83,8 @@ static int ms5611_write(const struct spi_dt_spec *spi, uint8_t payload) {
 
   int ret = spi_write_dt(spi, &tx_bufs);
   if (ret < 0) {
-    LOG_ERR("Failed to write command: %d (%s)", ret, strerror(-ret));
+    LOG_ERR("Failed to write command %X: %d (%s)", payload, ret,
+            strerror(-ret));
     return ret;
   }
 
@@ -136,17 +113,32 @@ static int ms5611_reset(const struct spi_dt_spec *spi) {
   return 0;
 }
 
+static void ms5611_compensate(uint32_t rawPressure, uint32_t rawTemperature,
+                              struct ms5611_data *data) {
+  uint64_t d1 = rawPressure;
+  uint64_t d2 = rawTemperature;
+
+  uint64_t dt = d2 - (data->coeffs[4] << 8);
+  uint64_t temp = 2000 + (dt * data->coeffs[5] >> 23);
+
+  uint64_t off = (data->coeffs[1] << 16) + ((data->coeffs[3] * dt) >> 7);
+  uint64_t sens = (data->coeffs[0] << 15) + ((data->coeffs[2] * dt) >> 8);
+
+  uint64_t p = (((d1 * sens) >> 21) - off) >> 15;
+
+  data->last_sample.temperature = temp;
+  data->last_sample.pressure = p;
+}
+
 static int ms5611_init(const struct device *dev) {
   CHECKIF(dev == NULL) { return -EINVAL; }
 
-  struct ms5611_data *drv = (struct ms5611_data *)dev->data;
+  struct ms5611_data *data = (struct ms5611_data *)dev->data;
   struct ms5611_config *conf = (struct ms5611_config *)dev->config;
   int ret;
 
-  // Check if SPI is ready (this should initialize CS)
-  if (!spi_is_ready_dt(&conf->spi)) {
+  while (!spi_is_ready_dt(&conf->spi)) {
     LOG_ERR("SPI device not ready");
-    return -ENODEV;
   }
 
   ret = ms5611_reset(&conf->spi);
@@ -156,7 +148,7 @@ static int ms5611_init(const struct device *dev) {
   }
 
   for (int i = 0; i < 6; i++) {
-    ret = ms5611_read_PROM(&conf->spi, i + 1, &drv->coeffs[i]);
+    ret = ms5611_read_PROM(&conf->spi, i + 1, &data->coeffs[i]);
     if (ret < 0) {
       LOG_ERR("Failed to retreive coeff %d: %d (%s)", i + 1, ret,
               strerror(-ret));
@@ -164,20 +156,64 @@ static int ms5611_init(const struct device *dev) {
     }
   }
 
-  LOG_HEXDUMP_INF(drv->coeffs, sizeof drv->coeffs, "Loaded coefficients:");
+  LOG_HEXDUMP_INF(data->coeffs, sizeof data->coeffs, "Loaded coefficients:");
 
   return 0;
 }
 
 static int ms5611_sample_fetch(const struct device *dev,
                                enum sensor_channel chan) {
-  return -1;
+  CHECKIF(dev == NULL) { return -EINVAL; }
+
+  struct ms5611_data *data = (struct ms5611_data *)dev->data;
+  struct ms5611_config *conf = (struct ms5611_config *)dev->config;
+  int ret;
+  uint32_t rawPressure, rawTemperature;
+
+  ret = ms5611_write(&conf->spi, COMMAND_CONVERT_D1);
+  if (ret < 0) {
+    return ret;
+  }
+  k_sleep(K_MSEC(10));
+  ret = ms5611_read_ADC(&conf->spi, &rawPressure);
+  if (ret < 0) {
+    return ret;
+  }
+
+  ret = ms5611_write(&conf->spi, COMMAND_CONVERT_D2);
+  if (ret < 0) {
+    return ret;
+  }
+  k_sleep(K_MSEC(10));
+  ret = ms5611_read_ADC(&conf->spi, &rawTemperature);
+  if (ret < 0) {
+    return ret;
+  }
+
+  ms5611_compensate(rawPressure, rawTemperature, data);
+
+  return 0;
 }
 
 static int ms5611_channel_get(const struct device *dev,
                               enum sensor_channel chan,
                               struct sensor_value *val) {
-  return -1;
+  const struct ms5611_data *data = dev->data;
+
+  switch (chan) {
+  case SENSOR_CHAN_AMBIENT_TEMP:
+    val->val1 = data->last_sample.temperature / 100;
+    val->val2 = data->last_sample.temperature % 100 * 10000;
+    break;
+  case SENSOR_CHAN_PRESS:
+    val->val1 = data->last_sample.pressure / 100;
+    val->val2 = data->last_sample.pressure % 100 * 10000;
+    break;
+  default:
+    return -ENOTSUP;
+  }
+
+  return 0;
 }
 
 static int ms5611_attr_set(const struct device *dev, enum sensor_channel chan,
