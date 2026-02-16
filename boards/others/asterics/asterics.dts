@@ -2,6 +2,9 @@
 #include <st/h7/stm32h723.dtsi>
 #include <st/h7/stm32h723zgtx-pinctrl.dtsi>
 
+#include <zephyr/dt-bindings/sensor/icm42688.h> // To use sensor macros
+#include <zephyr/dt-bindings/sensor/bmp581.h>
+
 / {
     model = "AsterICS";
     compatible = "asterics";
@@ -120,6 +123,52 @@
     status = "okay";
 };
 
+&spi1 {
+    status = "okay";
+
+    pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pa7>;
+    pinctrl-names = "default";
+
+    clocks = <&rcc STM32_CLOCK(APB2, 12)>,
+            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+
+    cs-gpios = <&gpiod 15 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+
+    w25q512jv: w25q512jv@0 {
+        compatible = "jedec,spi-nor";
+        reg = <0>;
+
+        spi-max-frequency = <64000000>;
+
+        /* Dimensione in bit: 512 Mbit = 64 MByte = 0x4000000 */
+        size = <0x4000000>;
+
+        /* JEDEC ID per W25Q512JV-IQ/JQ:
+            Manufacturer: 0xEF (Winbond)
+            Memory Type:  0x40 (SPI)
+           Capacity:     0x20 (512Mbit) */
+
+        /* JEDEC ID per MX25L512:
+            Manufacturer: 0xC2 (mxic)
+            Memory Type:  0x20 (SPI)
+           Capacity:     0x1a (512Mbit) */
+        jedec-id = [C2 20 1a];  //check for different data size and memory type
+    
+        /* Partizionamento (Opzionale ma raccomandato) */
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            storage_partition: partition@0 {
+                label = "storage";
+                reg = <0x00000000 0x04000000>; /* Tutta la memoria */
+            };
+        };
+
+    };
+};
+
 &spi5 {
     status = "okay";
 
@@ -132,15 +181,94 @@
     clocks = <&rcc STM32_CLOCK(APB2, 20)>,
             <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
 
-    cs-gpios = <&gpiod 11 GPIO_ACTIVE_LOW>;
+    cs-gpios = <&gpiod 11 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //ms56
+                <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //gyro
+                <&gpioa 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //accel
+                <&gpioc 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //icm
+                <&gpioc 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; //bmp
 
     mcu_ms5611: ms5611@0 {
         status = "okay";
 
         compatible = "ams,ms5611";
-        reg = <0x0>;
+        reg = <0>;
         spi-max-frequency = <1000000>;
     };
+
+    mcu_bmi088_gyro: bmi08x-gyro@1 {
+        status = "okay";
+
+        compatible = "bosch,bmi08x-gyro";
+        reg = <1>;
+        spi-max-frequency = <1000000>;
+
+        gyro-hz = "400_47";
+        gyro-fs = <2000>;
+
+        friendly-name="bmi088-gyro-mcu";
+    };
+
+    mcu_bmi088_accel: bmi08x-accel@2 {
+        status = "okay";
+        compatible = "bosch,bmi08x-accel";
+        reg = <2>;
+        spi-max-frequency = <1000000>;
+
+        accel-hz = "1600";
+        accel-fs = <16>;
+
+        //data-sync = <&mcu_bmi088_gyro> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
+        friendly-name="bmi088-accel-mcu";
+    };
+
+    mcu_icm42688p: mcu_icm42688p@3 {
+        status = "okay";
+        compatible = "invensense,icm42688", "invensense,icm4268x";
+        reg = <3>;
+        spi-max-frequency = <1000000>;
+        friendly-name = "icm42688-p-mcu";
+
+        int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
+        
+        /* Accel Config */
+        accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
+        accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
+        accel-fs = <ICM42688_DT_ACCEL_FS_8>;
+
+        /* Gyro */
+        gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
+        gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
+        gyro-fs = <ICM42688_DT_GYRO_FS_1000>;
+
+
+        /* Correzione assi */
+        /* axis-align-x = <SENSOR_AXIS_ALIGN_DT_Y>;
+        axis-align-x-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
+        
+        axis-align-y = <SENSOR_AXIS_ALIGN_DT_X>;
+        axis-align-y-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
+        
+        axis-align-z = <SENSOR_AXIS_ALIGN_DT_Z>;
+        axis-align-z-sign = <SENSOR_AXIS_ALIGN_DT_NEG>; */
+    };
+
+    mcu_bmp585: mcu_bmp585@4 {
+        //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
+        status = "disabled";    //FIXME: the driver doesn't work in SPI mode yet
+        compatible = "bosch,bmp581";
+        reg = <4>;
+        spi-max-frequency = <1000000>;
+        friendly-name = "bmp585-mcu";
+
+        odr = <BMP581_DT_ODR_50_HZ>;
+        press-osr = <BMP581_DT_OVERSAMPLING_4X>;
+        temp-osr = <BMP581_DT_OVERSAMPLING_4X>;
+        power-mode = <BMP581_DT_MODE_NORMAL>;
+        press-iir = <0>;
+        temp-iir = <0>;
+
+    };
+
 };
 
 &usart1 {
@@ -153,17 +281,28 @@
 
 &adc1 {
     status = "okay";
-    pinctrl-0 = <&adc1_inp9_pb0 &adc1_inp8_pc5>;
+    pinctrl-0 = <&adc1_inp9_pb0
+                &adc1_inp8_pc5>;
     
     pinctrl-names = "default"; 
-    resolutions = <16>;
+
+    //resolutions = <STM32_ADC_RES(16, 0x00);
 
     st,adc-clock-source = "ASYNC";
+
+
+    // Il primo è il clock di bus, il secondo è quello della periferica. 
+    //è possibile anche aggiungere un fattore di divisione per un prescaler del clock in ingresso
+    // il secondo elemento va messo se si sceglie di usare un clock-source async
+    clocks = <&rcc STM32_CLOCK(AHB1, 5)>,
+            <&rcc STM32_SRC_PLL3_R ADC_SEL(1)>;
+
+    clock-names = "adcx", "adc_ker";
+
     st,adc-prescaler = <4>;
 
-
-    sampling-times = <33>; // FIXME: random magic number, check in cubemx
-    st,adc-sequencer = "fixed";
+    //sampling-times = <33>; // FIXME: random magic number, check in cubemx
+    //st,adc-sequencer = "fixed";
     
     #address-cells = <1>;
     #size-cells = <0>;
@@ -173,7 +312,7 @@
         zephyr,gain = "ADC_GAIN_1";
         zephyr,reference = "ADC_REF_INTERNAL";
         zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
-        zephyr,resolution = <12>;
+        zephyr,resolution = <16>;
         // PC5
     };
 
@@ -182,7 +321,7 @@
         zephyr,gain = "ADC_GAIN_1";
         zephyr,reference = "ADC_REF_INTERNAL";
         zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
-        zephyr,resolution = <12>;
+        zephyr,resolution = <16>;
         //label = "PB0";
     };
 };
