@@ -123,6 +123,134 @@
     status = "okay";
 };
 
+&i2c2 {
+    status = "okay";
+
+    pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+    pinctrl-names = "default";
+
+    //TODO: clocks = <&rcc STM32_CLOCK(APB1, 22)>;
+
+    //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/microchip%2Cmcp9600.html#dtbinding-microchip-mcp9600
+    //TODO: parametri
+    mcp9600: mcp9600@40 {
+        compatible = "microchip,mcp9600";
+        reg = <0x40>;
+    };
+
+    mcp9600_2: mcp9600@4f {
+        compatible = "microchip,mcp9600";
+        reg = <0x4f>;
+    };
+};
+
+&i2c4 {
+    status = "okay";
+
+    pinctrl-0 = <&i2c4_scl_pd12 &i2c4_sda_pd13>;
+    pinctrl-names = "default";
+
+    //TODO: clocks = <&rcc STM32_CLOCK(APB4, 
+
+    //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
+    ina219_mcu: ina219@41 {
+        compatible = "ti,ina219";
+        reg = <0x41>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <10>;
+        
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <3>;
+        sadc = <3>;
+        friendly-name = "ina219-mcu";
+    };
+
+    ina219_rf: ina219@42 {
+        compatible = "ti,ina219";
+        reg = <0x42>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <10>;
+        
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <3>;
+        sadc = <3>;
+        friendly-name = "ina219-rf";
+    };
+
+    ina219_servo: ina219@43 {
+        compatible = "ti,ina219";
+        reg = <0x43>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <10>;
+        
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <3>;
+        sadc = <3>;
+        friendly-name = "ina219-servo";
+        };
+
+    ina219_ring: ina219@44 {
+        compatible = "ti,ina219";
+        reg = <0x44>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <10>;
+        
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <3>;
+        sadc = <3>;
+        friendly-name = "ina219-ring";
+    };
+
+    ina219_sensor: ina219@45 {
+        compatible = "ti,ina219";
+        reg = <0x45>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <10>;
+        
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <3>;
+        sadc = <3>;
+        friendly-name = "ina219-sensor";
+    };
+
+    ina219_camera: ina219@46 {
+        compatible = "ti,ina219";
+        reg = <0x46>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <10>;
+        
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <3>;
+        sadc = <3>;
+        friendly-name = "ina219-camera";
+    };
+
+};
+
 &spi1 {
     status = "okay";
 
