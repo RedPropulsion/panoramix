@@ -271,6 +271,31 @@
 
 };
 
+&sdmmc2 {
+    // DMA NON disponibile per questa periferica
+    status = "okay";
+    pinctrl-0 = <&sdmmc2_ck_pd6 &sdmmc2_cmd_pd7
+                &sdmmc2_d0_pg9 &sdmmc2_d1_pg10 
+                &sdmmc2_d2_pg11 &sdmmc2_d3_pg12>;
+    pinctrl-names = "default";
+
+    cd-gpios = <&gpioa 10 GPIO_ACTIVE_LOW>;
+    
+    bus-width =<4>;
+
+    clk-div = <2>; //the output bus frequency is FREQ_BUS = SDMMMC_CLK / [CLKDIV + 2]
+
+    clocks = <&rcc STM32_CLOCK(AHB2, 9)>,
+            <&rcc STM32_SRC_PLL2_R SDMMC_SEL(1)>; //SDMMMC_CLK = 64MHz
+    
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    disk-name = "SDCard";
+
+};
+
+
 &usart1 {
     status = "okay";
 
