@@ -5,6 +5,9 @@
 #include <zephyr/dt-bindings/sensor/icm42688.h> // To use sensor macros
 #include <zephyr/dt-bindings/sensor/bmp581.h>
 
+#include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
 / {
     model = "AsterICS";
     compatible = "asterics";
@@ -14,6 +17,8 @@
         zephyr,shell-uart = &usart1;
         zephyr,sram = &sram0;
         zephyr,flash = &flash0;
+        zephyr,led-strip = &strip_ring;
+        zephyr,led-strip = &strip_mcu;
     };
 
     leds {
@@ -47,6 +52,39 @@
             label = "LED MCU 7";
         };
     };
+
+    strip_ring: ws2812_0 {
+        compatible = "worldsemi,ws2812";
+        chain-length = <24>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                        LED_COLOR_ID_RED
+                        LED_COLOR_ID_BLUE>;
+        gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+
+        //delay-t1h = <700>;    //parametri di default per WS2812. Se necessario, modificarli
+        //delay-t1l = <600>;
+        //delay-t0h = <350>;
+        //delay-t0l = <800>;
+        //reset-delay = <8000>;
+
+        // sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
+    };
+
+    strip_mcu: ws2812_1 {
+        compatible = "worldsemi,ws2812";
+        chain-length = <12>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                        LED_COLOR_ID_RED
+                        LED_COLOR_ID_BLUE>;
+        gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
+
+        //delay-t1h = <700>;
+        //delay-t1l = <600>;
+        //delay-t0h = <350>;
+        //delay-t0l = <800>;
+        //reset-delay = <8000>;
+    };
+
 };
 
 &sram0 {
