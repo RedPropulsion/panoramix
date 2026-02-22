@@ -85,6 +85,24 @@
         //reset-delay = <8000>;
     };
 
+    pwm_devices {
+        buzzer_pwm: buzzer_pwm {
+            compatible = "pwm";
+            pwms = <&pwm14 0 250000 PWM_POLARITY_NORMAL>; 
+        };
+
+        servo_drogue_pwm: servo_drogue_pwm {
+            compatible = "pwm";
+            // canale 1, 20ms period (50Hz)
+            pwms = <&pwm3 0 20000000 PWM_POLARITY_NORMAL>; 
+        };
+
+        servo_main_pwm: servo_main_pwm {
+            compatible = "pwm";
+            // canale 3, 20ms period (50Hz)
+            pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>; 
+        };
+    };
 };
 
 &sram0 {
@@ -644,6 +662,27 @@
 
 };
 
+&timers3 {
+    status = "okay";
+
+    pwm3: pwm {
+        status = "okay";
+
+        pinctrl-0 = <&tim3_ch1_pc6 &tim3_ch3_pc8>;
+        pinctrl-names = "default";
+    };
+};
+
+&timers14 {
+    status = "okay";
+
+    pwm14: pwm {
+        status = "okay";
+
+        pinctrl-0 = <&tim14_ch1_pf9>;
+        pinctrl-names = "default";
+    };
+};
 
 &usart1 {
     status = "okay";
