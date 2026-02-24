@@ -54,7 +54,7 @@
     };
 
     strip_ring: ws2812_0 {
-        compatible = "worldsemi,ws2812";
+        compatible = "worldsemi,ws2812-gpio";
         chain-length = <24>;
         color-mapping = <LED_COLOR_ID_GREEN
                         LED_COLOR_ID_RED
@@ -71,7 +71,7 @@
     };
 
     strip_mcu: ws2812_1 {
-        compatible = "worldsemi,ws2812";
+        compatible = "worldsemi,ws2812-gpio";
         chain-length = <12>;
         color-mapping = <LED_COLOR_ID_GREEN
                         LED_COLOR_ID_RED
