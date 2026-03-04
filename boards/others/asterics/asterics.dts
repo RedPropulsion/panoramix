@@ -216,14 +216,14 @@
         reg = <0x41>;
 
         //required
-        lsb-microamp = <100>;
-        shunt-milliohm = <10>;
+        lsb-microamp = <50>;    //consente di avere una dinamica di 1.6A
+        shunt-milliohm = <27>;
         
         //optional
-        brng = <1>;
-        pg = <1>;
-        badc = <3>;
-        sadc = <3>;
+        brng = <1>;     //BUS Voltage: 0: 16V, 1: 32V
+        pg = <0>;       //±40 mV, ho un leggero overflow nel caso di consumo di alta corrente, ma non dovrebbe accadere mai
+        badc = <9>;     //  Bus  //  ADC Resolution and sample averaging. TODO: change this depending on sampling frequency
+        sadc = <9>;     // Shunt //  "" ""  ""  ""
         friendly-name = "ina219-mcu";
     };
 
@@ -232,14 +232,14 @@
         reg = <0x42>;
 
         //required
-        lsb-microamp = <100>;
-        shunt-milliohm = <10>;
+        lsb-microamp = <50>;    //consente di avere una dinamica di 1.6A
+        shunt-milliohm = <27>;
         
         //optional
         brng = <1>;
-        pg = <1>;
-        badc = <3>;
-        sadc = <3>;
+        pg = <0>;       //±40 mV
+        badc = <9>;
+        sadc = <9>;
         friendly-name = "ina219-rf";
     };
 
@@ -249,13 +249,13 @@
 
         //required
         lsb-microamp = <100>;
-        shunt-milliohm = <10>;
+        shunt-milliohm = <27>;
         
         //optional
         brng = <1>;
-        pg = <1>;
-        badc = <3>;
-        sadc = <3>;
+        pg = <1>;       //±80 mV
+        badc = <9>;
+        sadc = <9>;
         friendly-name = "ina219-servo";
         };
 
@@ -265,13 +265,13 @@
 
         //required
         lsb-microamp = <100>;
-        shunt-milliohm = <10>;
+        shunt-milliohm = <27>;
         
         //optional
         brng = <1>;
-        pg = <1>;
-        badc = <3>;
-        sadc = <3>;
+        pg = <1>;       //±80 mV
+        badc = <9>;
+        sadc = <9>;
         friendly-name = "ina219-ring";
     };
 
@@ -280,14 +280,14 @@
         reg = <0x45>;
 
         //required
-        lsb-microamp = <100>;
-        shunt-milliohm = <10>;
+        lsb-microamp = <30>;
+        shunt-milliohm = <27>;
         
         //optional
         brng = <1>;
-        pg = <1>;
-        badc = <3>;
-        sadc = <3>;
+        pg = <0>;       //±40 mV
+        badc = <9>;
+        sadc = <9>;
         friendly-name = "ina219-sensor";
     };
 
@@ -297,13 +297,13 @@
 
         //required
         lsb-microamp = <100>;
-        shunt-milliohm = <10>;
+        shunt-milliohm = <27>;
         
         //optional
         brng = <1>;
         pg = <1>;
-        badc = <3>;
-        sadc = <3>;
+        badc = <9>;
+        sadc = <9>;
         friendly-name = "ina219-camera";
     };
 
