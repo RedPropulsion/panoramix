@@ -61,11 +61,12 @@
                         LED_COLOR_ID_BLUE>;
         gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
 
-        //delay-t1h = <700>;    //parametri di default per WS2812. Se necessario, modificarli
-        //delay-t1l = <600>;
-        //delay-t0h = <350>;
-        //delay-t0l = <800>;
-        //reset-delay = <8000>;
+    //parametri di default per WS2812. Se necessario, modificarli
+        delay-t1h = <700>;   
+        delay-t1l = <600>;
+        delay-t0h = <350>;
+        delay-t0l = <800>;
+        reset-delay = <8000>;
 
         // sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
     };
@@ -78,11 +79,12 @@
                         LED_COLOR_ID_BLUE>;
         gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
 
-        //delay-t1h = <700>;
-        //delay-t1l = <600>;
-        //delay-t0h = <350>;
-        //delay-t0l = <800>;
-        //reset-delay = <8000>;
+        delay-t1h = <700>;
+        delay-t1l = <600>;
+        delay-t0h = <350>;
+        delay-t0l = <800>;
+        reset-delay = <8000>;
+        
     };
 
     pwm_devices {
