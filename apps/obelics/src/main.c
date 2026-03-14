@@ -5,7 +5,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
-
+#include <zephyr/drivers/led_strip.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
@@ -121,6 +121,7 @@ void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t
 void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     int phase_sw = gpio_pin_get_dt(&enc_sw);
     int step = 10;
+
     if (!phase_sw) {
         static uint32_t last_time = 0;
         uint32_t now = k_uptime_get_32();
@@ -140,13 +141,25 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
     }
 }
 
-/* ------------------------------------------------------------------ *
- * Main
- * ------------------------------------------------------------------ */
-int main(void)
-{   
-     LOG_INF("Starting main()");
+/* --- 3. Main Initialization --- */
+int main(void) {
     int ret;
+
+
+    // 1. Enable the neopixel buffer (PE5 HIGH) — MUST happen before led_strip_update_rgb
+    if (!gpio_is_ready_dt(&neopixel_en)) {
+        printk("Error: Neopixel enable pin not ready\n");
+        return -ENODEV;
+    }
+    gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
+    gpio_pin_set_dt(&neopixel_en, 1);
+    printk("Neopixel buffer enabled\n");
+
+    // 2. Check strip is ready
+    if (!device_is_ready(strip)) {
+        printk("LED strip not ready\n");
+        return -ENODEV;
+    }
 
     
     udp_client_init();
