@@ -1,3 +1,43 @@
+#include <zephyr/dt-bindings/led/led.h>
+
+&dma1 {
+    status = "okay";
+};
+
+&dmamux1 {
+    status = "okay";
+};
+
+/* Enable SPI4 with MOSI on PE6 */
+&spi4 {
+    status = "okay";
+    pinctrl-0 = <&spi4_mosi_pe6>;
+    pinctrl-names = "default";
+
+    dmas = <&dmamux1 0 84 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>,
+           <&dmamux1 1 83 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>;
+    dma-names = "tx", "rx";
+
+    led_strip: ws2812@0 {
+        compatible = "worldsemi,ws2812-spi";
+        reg = <0>;
+        spi-max-frequency = <6400000>;
+        chain-length = <2>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+        spi-one-frame  = <0x7c>;
+        spi-zero-frame = <0x60>;
+        reset-delay    = <300>;
+    };
+};
+
+&pinctrl {
+    spi4_mosi_pe6: spi4_mosi_pe6 {
+        pinmux = <STM32_PINMUX('E', 6, AF5)>; /* PE6 = SPI4_MOSI on AF5 */
+    };
+};
+
 / {
     /* Define a node for your encoder */
     rotary_encoder: rotary_encoder {
@@ -15,5 +55,12 @@
             label = "Encoder Phase B";
         };
     };
-};
 
+     neopixel_enable: neopixel-enable {
+        compatible = "gpio-keys";
+        neopixel_en: neopixel_en {
+            gpios = <&gpioe 5 GPIO_ACTIVE_HIGH>;
+            label = "Neopixel Enable";
+        };
+    };
+};
