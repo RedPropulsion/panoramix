@@ -153,13 +153,6 @@ int main(void) {
     }
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
     gpio_pin_set_dt(&neopixel_en, 1);
-    printk("Neopixel buffer enabled\n");
-
-    // 2. Check strip is ready
-    if (!device_is_ready(strip)) {
-        printk("LED strip not ready\n");
-        return -ENODEV;
-    }
 
     
     udp_client_init();

@@ -27,6 +27,15 @@
         };
     };
 
+        /* PE6 as plain GPIO output for bit-bang data */
+    neopixel_data: neopixel-data {
+        compatible = "gpio-keys";
+        neopixel_din: neopixel_din {
+            gpios = <&gpioe 6 GPIO_ACTIVE_HIGH>;
+            label = "Neopixel DIN";
+        };
+    };
+
     led_strip: ws2812 {
         status = "okay";
         
@@ -115,3 +124,4 @@
 &mac {
     status = "okay";
 };
+
