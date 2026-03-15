@@ -3,14 +3,18 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/led_strip.h>
+#include "ws2812_bitbang.h"
 
-#define STRIP_NODE  DT_NODELABEL(led_strip)
-#define NUM_LEDS    DT_PROP(STRIP_NODE, chain_length)
+#define NUM_LEDS 2
 
+
+/* PE6 = data in, PE5 = buffer output enable */
+static const struct gpio_dt_spec neopixel_din =
+    GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_din), gpios);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
 
-static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
+
 
 /* --- 1. LED Setup & Timers --- */
 struct led_data {
@@ -79,21 +83,15 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 
 /* --- 3. Main Initialization --- */
 int main(void) {
+    
 
-    // 1. Enable the neopixel buffer (PE5 HIGH) — MUST happen before led_strip_update_rgb
-    if (!gpio_is_ready_dt(&neopixel_en)) {
-        printk("Error: Neopixel enable pin not ready\n");
-        return -ENODEV;
-    }
+    /* Enable buffer (PE5) */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
     gpio_pin_set_dt(&neopixel_en, 1);
-    printk("Neopixel buffer enabled\n");
 
-    // 2. Check strip is ready
-    if (!device_is_ready(strip)) {
-        printk("LED strip not ready\n");
-        return -ENODEV;
-    }
+    /* Init data pin (PE6) */
+    ws2812_bb_init(&neopixel_din);
+
 
     // Initialize LEDs and start their timers
     for (int i = 0; i < ARRAY_SIZE(leds); i++) {
@@ -130,17 +128,15 @@ int main(void) {
     bool toggle = false;
 
     while (1) {
-        // Clear all pixels first
         memset(pixels, 0, sizeof(pixels));
-
         if (toggle) {
-            pixels[0].r = 128;  // LED 0 red
+            pixels[0].r = 128;
         } else {
-            pixels[1].g = 128;  // LED 1 green
+            pixels[1].g = 128;
         }
         toggle = !toggle;
 
-        led_strip_update_rgb(strip, pixels, NUM_LEDS);
+        ws2812_bb_update(&neopixel_din, pixels, NUM_LEDS);
         k_sleep(K_SECONDS(1));
     }
     return 0;
