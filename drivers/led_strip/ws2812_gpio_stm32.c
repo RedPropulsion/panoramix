@@ -4,7 +4,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 #include <zephyr/arch/cpu.h>
-#include <zephyr/dt-bindings/led/led.h>   /* ← fixes LED_COLOR_ID_* */
+#include <zephyr/dt-bindings/led/led.h>
 #include <stm32h7xx_ll_gpio.h>
 
 struct ws2812_stm32_config {

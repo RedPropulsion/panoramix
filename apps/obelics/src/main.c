@@ -2,7 +2,7 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/drivers/led_strip.h>  // ← standard API, no more custom header
+#include <zephyr/drivers/led_strip.h>
 
 #define STRIP_NODE  DT_NODELABEL(led_strip)
 #define NUM_LEDS    DT_PROP(STRIP_NODE, chain_length)
@@ -12,7 +12,7 @@ static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
 
-/* --- rest of your encoder/LED code unchanged --- */
+/* --- encoder/LED --- */
 struct led_data {
     struct gpio_dt_spec gpio;
     struct k_timer timer;
@@ -124,7 +124,7 @@ int main(void)
         }
         toggle = !toggle;
 
-        led_strip_update_rgb(strip, pixels, NUM_LEDS);  // ← clean API call
+        led_strip_update_rgb(strip, pixels, NUM_LEDS);
         k_sleep(K_SECONDS(1));
     }
     return 0;
