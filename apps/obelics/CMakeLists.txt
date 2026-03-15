@@ -11,7 +11,6 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(ObelICS)
 target_sources(app PRIVATE
     src/main.c
-    src/ws2812_bitbang.c   # ← add this
 )
 
 target_include_directories(app PRIVATE src)

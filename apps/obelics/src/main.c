@@ -121,7 +121,6 @@ void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t
 void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     int phase_sw = gpio_pin_get_dt(&enc_sw);
     int step = 10;
-
     if (!phase_sw) {
         static uint32_t last_time = 0;
         uint32_t now = k_uptime_get_32();
