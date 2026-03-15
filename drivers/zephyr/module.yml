@@ -1,0 +1,7 @@
+name: panoramix-drivers
+
+build:
+  cmake: .
+  kconfig: Kconfig
+  settings:
+    dts_root: .

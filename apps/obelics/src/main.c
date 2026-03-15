@@ -2,21 +2,17 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/drivers/led_strip.h>
-#include "ws2812_bitbang.h"
+#include <zephyr/drivers/led_strip.h>  // ← standard API, no more custom header
 
-#define NUM_LEDS 2
+#define STRIP_NODE  DT_NODELABEL(led_strip)
+#define NUM_LEDS    DT_PROP(STRIP_NODE, chain_length)
 
+static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 
-/* PE6 = data in, PE5 = buffer output enable */
-static const struct gpio_dt_spec neopixel_din =
-    GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_din), gpios);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
 
-
-
-/* --- 1. LED Setup & Timers --- */
+/* --- rest of your encoder/LED code unchanged --- */
 struct led_data {
     struct gpio_dt_spec gpio;
     struct k_timer timer;
@@ -37,12 +33,10 @@ void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t
     uint32_t now = k_uptime_get_32();
     if (now - last_time < 50) return;
     last_time = now;
-
     selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
     printk("\n---> Now adjusting LED %d <---\n", selected_led);
 }
 
-/* --- 2. Encoder Setup --- */
 static const struct gpio_dt_spec enc_a  = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_a), gpios);
 static const struct gpio_dt_spec enc_b  = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_b), gpios);
 static const struct gpio_dt_spec enc_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_s), gpios);
@@ -59,13 +53,11 @@ void led_timer_handler(struct k_timer *timer_id) {
 void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
     int phase_sw = gpio_pin_get_dt(&enc_sw);
     int step = 10;
-
     if (!phase_sw) {
         static uint32_t last_time = 0;
         uint32_t now = k_uptime_get_32();
         if (now - last_time < 5) return;
         last_time = now;
-
         int phase_b = gpio_pin_get_dt(&enc_b);
         if (phase_b) {
             intervals[selected_led] += step;
@@ -73,7 +65,6 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
             if (intervals[selected_led] > step)
                 intervals[selected_led] -= step;
         }
-        // Fixed: format string now matches 4 arguments
         printk("LED sel=%d intervals: %d \t %d \t %d ms\n",
                selected_led, intervals[0], intervals[1], intervals[2]);
     } else {
@@ -81,19 +72,18 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
     }
 }
 
-/* --- 3. Main Initialization --- */
-int main(void) {
-    
-
-    /* Enable buffer (PE5) */
+int main(void)
+{
+    /* Enable neopixel buffer (PE5) */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
     gpio_pin_set_dt(&neopixel_en, 1);
 
-    /* Init data pin (PE6) */
-    ws2812_bb_init(&neopixel_din);
+    /* Driver init is handled automatically by Zephyr at boot */
+    if (!device_is_ready(strip)) {
+        printk("LED strip not ready\n");
+        return -ENODEV;
+    }
 
-
-    // Initialize LEDs and start their timers
     for (int i = 0; i < ARRAY_SIZE(leds); i++) {
         if (!gpio_is_ready_dt(&leds[i].gpio)) {
             printk("Error: LED %d not ready\n", i);
@@ -104,7 +94,6 @@ int main(void) {
         k_timer_start(&leds[i].timer, K_MSEC(intervals[i]), K_NO_WAIT);
     }
 
-    // Initialize Encoder Pins
     if (!gpio_is_ready_dt(&enc_a) || !gpio_is_ready_dt(&enc_b) || !gpio_is_ready_dt(&enc_sw)) {
         printk("Error: Encoder GPIOs not ready\n");
         return 0;
@@ -123,7 +112,6 @@ int main(void) {
 
     printk("Starting main loop...\n");
 
-    // 3. Declare pixels ONCE outside the loop
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
 
@@ -136,7 +124,7 @@ int main(void) {
         }
         toggle = !toggle;
 
-        ws2812_bb_update(&neopixel_din, pixels, NUM_LEDS);
+        led_strip_update_rgb(strip, pixels, NUM_LEDS);  // ← clean API call
         k_sleep(K_SECONDS(1));
     }
     return 0;

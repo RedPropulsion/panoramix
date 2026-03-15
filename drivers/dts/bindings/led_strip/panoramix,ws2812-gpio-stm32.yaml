@@ -1,0 +1,26 @@
+description: Panoramix WS2812 bit-bang GPIO driver for STM32H7
+
+compatible: "panoramix,ws2812-gpio-stm32"
+
+include: base.yaml
+
+properties:
+  gpios:
+    type: phandle-array
+    required: true
+    description: GPIO pin connected to WS2812 DIN
+
+  chain-length:
+    type: int
+    required: true
+    description: Number of LEDs in the strip
+
+  cpu-mhz:
+    type: int
+    required: true
+    description: CPU clock frequency in MHz, used to calculate bit-bang timing
+
+  color-mapping:
+    type: uint8-array
+    required: true
+    description: Mapping of color channels (e.g. GRB for WS2812B)
