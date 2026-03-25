@@ -1,0 +1,5 @@
+config SENSOR_H3LIS
+    bool "STMicroelectronics H3LIS331DL high-g accelerometer"
+    depends on DT_HAS_ST_H3LIS331DL_ENABLED
+    depends on SPI
+    default y

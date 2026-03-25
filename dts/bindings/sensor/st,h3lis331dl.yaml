@@ -1,0 +1,32 @@
+description: |
+  H3lis 3-axis acceleration sensor accessed with SPI
+
+compatible: "st,h3lis331dl"
+include: [sensor-device.yaml, spi-device.yaml]
+
+
+properties:
+  full-scale:
+    type: int
+    default: 100
+    description: |
+      Measurement full-scale range in g.
+      Valid values: 100, 200, 400.
+      Maps to CTRL_REG4 FS[1:0] bits (Table 8.5, DS9012).
+    enum:
+      - 100
+      - 200
+      - 400
+
+  odr:
+    type: int
+    default: 100
+    description: |
+      Output data rate in Hz (normal mode).
+      Valid values: 50, 100, 400, 1000.
+      Maps to CTRL_REG1 DR[1:0] bits (Table 16, DS9012).
+    enum:
+      - 50
+      - 100
+      - 400
+      - 1000
