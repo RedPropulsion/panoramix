@@ -1,3 +1,4 @@
 if SENSOR
 rsource "ms5611/Kconfig"
+rsource "h3lis/Kconfig"
 endif # SENSOR
