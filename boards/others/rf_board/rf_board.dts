@@ -1,0 +1,230 @@
+/dts-v1/;
+#include <st/l4/stm32l412XB.dtsi>
+#include <st/l4/stm32l412rbtxp-pinctrl.dtsi>
+
+#include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/dma/stm32_dma.h>
+
+#include <zephyr/dt-bindings/lora/sx126x.h>
+
+/ {
+    model = "SchedaRF";
+    compatible = "rf_board";
+
+    chosen {
+        zephyr,console = &usart3;
+        zephyr,shell-uart = &usart3;
+        zephyr,sram = &sram0;
+        zephyr,flash = &flash0;
+    };
+
+    leds {
+        compatible = "gpio-leds";
+
+        led_ring: led_ring {
+            gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+            label = "Led Ring";
+        };
+        led_rf_1: led_rf_1 {
+                gpios = <&gpioc 1 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 1";
+        };
+        led_rf_2: led_rf_2 {
+                gpios = <&gpioc 2 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 2";
+        };
+        led_rf_3: led_rf_3 {
+                gpios = <&gpioc 12 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 3";
+        };
+        led_rf_4: led_rf_4 {
+                gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 4";
+        };
+        led_rf_5: led_rf_5 {
+                gpios = <&gpioa 12 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 5";
+        };
+        led_rf_6: led_rf_6 {
+                gpios = <&gpioc 9 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 6";
+        };
+        led_rf_7: led_rf_7 {
+                gpios = <&gpioc 8 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 7";
+        };
+    };
+
+
+    buttons {
+        compatible = "gpio-keys";
+        debounce-interval-ms = <30>;
+        user_button: button_0 {
+            gpios = <&gpioc 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            label = "BTN 1 RF";
+        };
+    };
+
+    /* led_strip: led_strip {
+        compatible = "worldsemi,ws2812-gpio";
+        
+        gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+
+        chain-length = <6>;
+
+        color-mapping = <LED_COLOR_ID_GREEN
+                        LED_COLOR_ID_RED
+                        LED_COLOR_ID_BLUE>;
+
+        delay-t1h = <700>;   
+        delay-t1l = <600>;
+        delay-t0h = <350>;
+        delay-t0l = <800>;
+        reset-delay = <8000>;
+    }; */
+
+};
+
+
+// TODO: Configurazione clock
+
+&clk_hse {
+    clock-frequency = <DT_FREQ_M(48)>;
+    status = "okay";
+};
+
+&clk_lse {
+    status = "okay";
+    driving-capability = <2>;
+};
+
+&pll {
+    status = "okay";
+    clocks = <&clk_hse>;
+
+    div-m = <3>;
+    mul-n = <10>;
+    div-r = <2>;
+};
+
+&rcc {
+    status = "okay";
+
+    clocks = <&pll>;
+
+    clock-frequency = <DT_FREQ_M(80)>;
+    
+    ahb-prescaler = <1>;
+    apb1-prescaler = <1>;
+    apb2-prescaler = <1>;
+};
+
+
+// Configurazione periferiche
+
+&i2c1 { // GPS Ublox M10S (senza batteria di backup)
+    status = "disabled";
+
+    pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
+    pinctrl-names = "default";
+
+    //clocks = <>;
+
+    //DMA: connected both tx and rx
+
+    //TODO: impelement i2c driver for ublox
+};
+
+
+&spi2 { // Radio LoRa SX1262
+	status = "okay";
+
+    pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+    pinctrl-names = "default";
+
+    //clocks = <>, <>;//TODO: set clock configuration
+
+    //DMA: connected both tx and rx
+
+
+
+    cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;
+
+    lora_sx1262_asterics: SX1262@0 {
+        // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
+        compatible = "semtech,sx1262";
+        reg = <0>;
+
+        spi-max-frequency = <2000000>; //FIXME
+        
+        label = "SX1262";
+
+        reset-gpios = <&gpioa 5 GPIO_ACTIVE_LOW>;
+        
+        busy-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+        
+        dio1-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>; //generic interrupt line from lora to mcu
+
+        regulator-ldo;
+        dio2-tx-enable;
+        dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8>; //TODO: perchè questo valore?
+
+		tcxo-power-startup-delay-ms = <5>; //FIXME: frfr non so come influisca @signo-codebase
+
+    };
+};
+
+&usart1 { // Seriale per comunicazione con asterics MCU
+    //TODO: implement
+    status = "okay";
+
+    pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+    pinctrl-names = "default";
+
+    current-speed = <115200>; //TODO: increase max speed
+    //TODO: maybe use clock-frequency to set clock frequency of the peripheral. Non so se devo farlo o meno. non so nemmeno come faccia a sapere il clock corretto. Andrebbe implementato e valutato l'effetto (anche sulle configurazioni già funzionanti)
+
+    //DMA: connected both tx and rx
+
+
+};
+
+&usart2 { // Seriale per comunicazione ESP32S3
+    //TODO: implement
+    status = "okay";
+    //PA2 tx
+    //PA3 rx
+    pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+    pinctrl-names = "default";
+
+    current-speed = <115200>;
+};
+
+&usart3 { // Seriale per comunicazione con VCP (debug)
+    //TODO: implement
+    status = "okay";
+    //PC10 tx
+    //PC11 rx
+    pinctrl-0 = <&usart3_tx_pc10 &usart3_rx_pc11>;
+    pinctrl-names = "default";
+
+    //DMA: connected both tx and rx
+
+    current-speed = <115200>;
+};
+
+&gpioa {
+    status = "okay";
+};
+&gpiob {
+    status = "okay";
+};
+&gpioc {
+    status = "okay";
+};
+
+&gpioh {
+    status = "okay";
+};

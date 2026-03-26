@@ -1,0 +1,5 @@
+board:
+  name: rf_board
+  full_name: SchedaRF
+  socs:
+    - name: stm32l412xx
