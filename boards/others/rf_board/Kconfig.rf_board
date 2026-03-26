@@ -1,0 +1,2 @@
+config BOARD_RF_BOARD
+    select SOC_STM32L412XX
