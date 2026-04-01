@@ -43,7 +43,13 @@
             gpios = <&gpiog 0 GPIO_ACTIVE_HIGH>;
             label = "LED MCU 7";
         };
+        led_mcu_8: led_mcu_8 {
+            gpios = <&gpiof 12 GPIO_ACTIVE_HIGH>;
+            label = "LED MCU 8";
+        };
     };
+
+
 };
 
 &sram0 {
@@ -78,6 +84,22 @@
     d2ppre1 = <2>;
     d2ppre2 = <2>;
     d3ppre = <2>;
+};
+
+&spi4 {
+    status = "okay";
+
+    pinctrl-0 = <&spi4_sck_pe2 &spi4_miso_pe5 &spi4_mosi_pe6>;
+    pinctrl-names = "default";
+
+    cs-gpios = <&gpiog 8 GPIO_ACTIVE_LOW>;
+
+    sensor_h3lis: h3lis@0 {
+        status = "okay";
+        compatible = "st,h3lis331dl";
+        reg = <0x0>; 
+        spi-max-frequency = <1000000>;
+    };
 };
 
 &spi5 {

@@ -12,4 +12,5 @@ manifest:
         name-allowlist:
           - cmsis_6
           - hal_stm32
+          - hal_st
 

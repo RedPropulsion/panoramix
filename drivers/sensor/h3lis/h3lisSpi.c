@@ -47,7 +47,7 @@ int h3lis331dl_spi_read(const struct device *dev,
         .count   = 1,
     };
 
-    uint8_t dummy;
+    uint8_t dummy; // garbage while sending 
     struct spi_buf rx_bufs[2] = {
         { .buf = &dummy, .len = 1   },
         { .buf = data,   .len = len },

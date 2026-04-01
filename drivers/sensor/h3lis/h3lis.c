@@ -376,7 +376,7 @@ static int h3lis331dl_init(const struct device *dev)
         LOG_ERR("WHO_AM_I read failed: %d", ret);
         return -ret;
     }
-    if (chip_id != H3LIS331DL_DEVICE_ID) {
+    if (chip_id != H3LIS331DL_DEVICE_ID) { //chip id is zero
         LOG_ERR("Wrong device ID: expected 0x%02x, got 0x%02x",
                 H3LIS331DL_DEVICE_ID, chip_id);
         return (int)chip_id + 5; // ENODEV
