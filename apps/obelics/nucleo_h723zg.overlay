@@ -19,7 +19,7 @@
         };
     };
 
-     neopixel_enable: neopixel-enable {
+    neopixel_enable: neopixel-enable {
         compatible = "gpio-keys";
         neopixel_en: neopixel_en {
             gpios = <&gpioe 5 GPIO_ACTIVE_HIGH>;

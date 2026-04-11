@@ -293,10 +293,8 @@ int main(void) {
         } else {
             pixels[1].b = 128;
         }
-        toggle = !toggle;
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
         k_sleep(K_SECONDS(5));
     }
-    return 0;
 }
