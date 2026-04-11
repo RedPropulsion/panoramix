@@ -96,25 +96,25 @@
 /*              Obelics LoRa                  */
 /**********************************************/
 
-&spi1 {
-    status = "okay";
-    pinctrl-names = "default";
-
-    pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pb5>;
-    cs-gpios = <&gpiog 12 (GPIO_ACTIVE_LOW)>;
-
-    lora_sx1261: lora@0 {
-        status = "okay";
-        compatible = "semtech,sx1261";
-        reg = <0>;
-        spi-max-frequency = <1000000>;
-        label = "SX1261";
-
-        reset-gpios = <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        dio1-gpios = <&gpioe 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
-        busy-gpios = <&gpioe 13 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
-    };
-};
+// &spi1 {
+//     status = "okay";
+//     pinctrl-names = "default";
+//
+//     pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pb5>;
+//     cs-gpios = <&gpiog 12 (GPIO_ACTIVE_LOW)>;
+//
+//     lora_sx1261: lora@0 {
+//         status = "okay";
+//         compatible = "semtech,sx1261";
+//         reg = <0>;
+//         spi-max-frequency = <1000000>;
+//         label = "SX1261";
+//
+//         reset-gpios = <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+//         dio1-gpios = <&gpioe 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+//         busy-gpios = <&gpioe 13 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+//     };
+// };
 
 
 /**********************************************/
@@ -124,4 +124,3 @@
 &mac {
     status = "okay";
 };
-
