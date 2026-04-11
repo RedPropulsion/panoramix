@@ -1,74 +1,74 @@
-// #include <zephyr/dt-bindings/led/led.h>
-// #include <zephyr/dt-bindings/pwm/pwm.h>
+#include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
 
 / {
 
-//     rotary_encoder: rotary_encoder {
-//         compatible = "gpio-keys";
-//         encoder_s: encoder_switch {
-//             gpios = <&gpiog 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-//             label = "Encoder Switch";
-//         };
-//         encoder_a: encoder_a {
-//             gpios = <&gpiod 0 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
-//             label = "Encoder Phase A";
-//         };
-//         encoder_b: encoder_b {
-//             gpios = <&gpiod 1 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
-//             label = "Encoder Phase B";
-//         };
-//     };
+    rotary_encoder: rotary_encoder {
+        compatible = "gpio-keys";
+        encoder_s: encoder_switch {
+            gpios = <&gpiog 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Encoder Switch";
+        };
+        encoder_a: encoder_a {
+            gpios = <&gpiod 0 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+            label = "Encoder Phase A";
+        };
+        encoder_b: encoder_b {
+            gpios = <&gpiod 1 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+            label = "Encoder Phase B";
+        };
+    };
 
-//     neopixel_enable: neopixel-enable {
-//         compatible = "gpio-keys";
-//         neopixel_en: neopixel_en {
-//             gpios = <&gpioe 5 GPIO_ACTIVE_HIGH>;
-//             label = "Neopixel Enable";
-//         };
-//     };
+    neopixel_enable: neopixel-enable {
+        compatible = "gpio-keys";
+        neopixel_en: neopixel_en {
+            gpios = <&gpioe 5 GPIO_ACTIVE_HIGH>;
+            label = "Neopixel Enable";
+        };
+    };
 
-//     led_strip: ws2812 { //TODO: Consider if we can actually go back to using SPI for the Neopixels since LoRa is using SPI1, not SPI4
-//     status = "okay"; //NOTE: we disable it by default since it conflicts with SPI1, but if you want to test it you can enable it and assign it to SPI4, which is not used by anything else.
+    led_strip: ws2812 { //TODO: Consider if we can actually go back to using SPI for the Neopixels since LoRa is using SPI1, not SPI4
+    status = "okay"; //NOTE: we disable it by default since it conflicts with SPI1, but if you want to test it you can enable it and assign it to SPI4, which is not used by anything else.
     
-//         compatible = "panoramix,ws2812-gpio-stm32";
-//         gpios = <&gpioe 6 GPIO_ACTIVE_HIGH>;
-//         chain-length = <2>;
-//         cpu-mhz = <550>;
-//         color-mapping = [ 01 02 03 ];
-//     }; //NOTE: se assegni SPI4, quello dati è SPI4_mosi, però probabilmente devi assegnare comunque MISO e SCLK a pin inutili.
-//     /* vantaggio: usi DMA e quindi non è più bloccante.*/
+        compatible = "panoramix,ws2812-gpio-stm32";
+        gpios = <&gpioe 6 GPIO_ACTIVE_HIGH>;
+        chain-length = <2>;
+        cpu-mhz = <550>;
+        color-mapping = [ 01 02 03 ];
+    }; //NOTE: se assegni SPI4, quello dati è SPI4_mosi, però probabilmente devi assegnare comunque MISO e SCLK a pin inutili.
+    /* vantaggio: usi DMA e quindi non è più bloccante.*/
 
-// 	pwmdevices: pwmdevices {
-// 		compatible = "pwm-leds";
-// 		/* NOTE: disabled by default, PWM1 conflicts with SPI2 */
-// 		status = "okay";
+	pwmdevices: pwmdevices {
+		compatible = "pwm-leds";
+		/* NOTE: disabled by default, PWM1 conflicts with SPI2 */
+		status = "okay";
 
-// 		buzzer: buzzer {
-// 			pwms = <&pwm15 1 250000
-// 				(PWM_POLARITY_INVERTED | STM32_PWM_COMPLEMENTARY)>;
-// 		};
+		buzzer: buzzer {
+			pwms = <&pwm15 1 250000
+				(PWM_POLARITY_INVERTED | STM32_PWM_COMPLEMENTARY)>;
+		};
 	};
     
-// };
+};
 
-// &timers15 {
-//     status = "okay";
-//     st,prescaler = <1>;
+&timers15 {
+    status = "okay";
+    st,prescaler = <1>;
 
-//     pwm15: pwm {
-//         status = "okay";
-//         pinctrl-0 = <&tim15_ch1n_pe4>; /* TIM15_CH1N on PE4, it exists only negated */
-//         pinctrl-names = "default";
-//     };
-// };
+    pwm15: pwm {
+        status = "okay";
+        pinctrl-0 = <&tim15_ch1n_pe4>; /* TIM15_CH1N on PE4, it exists only negated */
+        pinctrl-names = "default";
+    };
+};
 
-// &dma1 {
-//     status = "okay";
-// };
+&dma1 {
+    status = "okay";
+};
 
-// &dmamux1 {
-//     status = "okay";
-// };
+&dmamux1 {
+    status = "okay";
+};
 
 
 /*********************************************/
@@ -77,46 +77,46 @@
 
 
 /////////////////////////////////// NON FUNZIONA OBELICS
-&spi1 { // Radio LoRa SX1276
-	status = "okay";
-    pinctrl-names = "default";
+// &spi1 { // Radio LoRa SX1276
+// 	status = "okay";
+//     pinctrl-names = "default";
 
-    pinctrl-0 = <&spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>; //NOTE: SPI4 written down on documentation is wrong.
-    cs-gpios = <&gpioa 4 (GPIO_ACTIVE_LOW)>;
+//     pinctrl-0 = <&spi1_sck_pb3 &spi1_miso_pb4 &spi1_mosi_pb5>; //NOTE: SPI4 written down on documentation is wrong.
+//     cs-gpios = <&gpioa 4 (GPIO_ACTIVE_LOW)>;
 
-    //DMA: connected both tx and rx
-    //dmas = <&dmamux1 0 84 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>,
-     //      <&dmamux1 1 83 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>;
-    //dma-names = "tx", "rx";
+//     //DMA: connected both tx and rx
+//     //dmas = <&dmamux1 0 84 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>,
+//      //      <&dmamux1 1 83 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>;
+//     //dma-names = "tx", "rx";
     
 
-    lora_sx1276: SX1276@0 {
-        status = "okay";
-        // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
-        compatible = "semtech,sx1276";
-        reg = <0>;
+//     lora_sx1276: SX1276@0 {
+//         status = "okay";
+//         // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
+//         compatible = "semtech,sx1276";
+//         reg = <0>;
 
-        spi-max-frequency = <1000000>;
+//         spi-max-frequency = <1000000>;
         
-        label = "SX1276";
+//         label = "SX1276";
 
-        reset-gpios = <&gpioe 14 GPIO_ACTIVE_LOW>;
+//         reset-gpios = <&gpioe 14 GPIO_ACTIVE_LOW>;
         
-        dio-gpios = <&gpioe 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+//         dio-gpios = <&gpioe 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
         
-        // <&gpiob 6 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiob 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiod 13 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiod 12 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiod 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpioe 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+//         // <&gpiob 6 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+// 		// 	    <&gpiob 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+// 		// 	    <&gpiod 13 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+// 		// 	    <&gpiod 12 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+// 		// 	    <&gpiod 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
+// 		// 	    <&gpioe 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
 
-        power-amplifier-output = "pa-boost";
+//         power-amplifier-output = "pa-boost";
         
-        // alias = "lora0";
+//         // alias = "lora0";
         
-    };
-};
+//     };
+// };
 
 // &leds {
 //     status = "disabled";
