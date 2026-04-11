@@ -16,6 +16,9 @@ struct ws2812_stm32_config {
     uint32_t cpu_mhz;
 };
 
+struct gpio_dt_spec pin =
+        GPIO_DT_SPEC_GET(DT_DRV_INST(0), gpios);
+
 /* ------------------------------------------------------------------ *
  * DWT helpers
  * ------------------------------------------------------------------ */
@@ -103,8 +106,6 @@ static size_t ws2812_stm32_length(const struct device *dev)
 static int ws2812_stm32_init(const struct device *dev)
 {
     const struct ws2812_stm32_config *cfg = dev->config;
-    struct gpio_dt_spec pin =
-        GPIO_DT_SPEC_GET(DT_DRV_INST(0), gpios); /* used only for configure */
 
     if (!gpio_is_ready_dt(&pin)) {
         return -ENODEV;

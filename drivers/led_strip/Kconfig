@@ -1,5 +1,6 @@
 config WS2812_GPIO_STM32
     bool "WS2812 bit-bang driver for STM32H7"
+    depends on DT_HAS_PANORAMIX_WS2812_GPIO_STM32_ENABLED
     depends on SOC_SERIES_STM32H7X
     select GPIO
     help
