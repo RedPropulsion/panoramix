@@ -64,19 +64,48 @@ static const struct pwm_dt_spec buzzer =
 uint32_t period = PWM_HZ(4000);
 
 /* Simple note definitions — period in nanoseconds */
-#define NOTE_C6   477274U   /* 2093 Hz */
-#define NOTE_D6   425637U   /* 2349 Hz */
-#define NOTE_E6   379245U   /* 2637 Hz */
-#define NOTE_F6   357858U   /* 2794 Hz */
-#define NOTE_G6   318878U   /* 3136 Hz */
-#define NOTE_A6   284091U   /* 3520 Hz */
-#define NOTE_B6   253099U   /* 3951 Hz */
-#define NOTE_C7   238906U   /* 4186 Hz ← closest to resonance */
-#define NOTE_REST 0U        /* silence */
+#define NOTE_E5  659
+#define NOTE_C5  523
+#define NOTE_G5  784
+#define NOTE_G4  392
+#define NOTE_A4  440
+#define NOTE_B4  494
+#define NOTE_AS4 466
+#define NOTE_F5  698
+#define NOTE_E4  330
+#define NOTE_A5  880
+#define NOTE_D5  587
+#define NOTE_DS5 622
+#define NOTE_REST 0
+
+#define BPM        200
+#define BEAT_MS    (60000 / BPM)
+#define Q          BEAT_MS          /* quarter note */
+#define E          (BEAT_MS / 2)    /* eighth note */
+#define H          (BEAT_MS * 2)    /* half note */
 
 struct note {
     uint32_t period_ns;
     uint32_t duration_ms;
+};
+
+typedef struct { uint32_t freq_hz; uint32_t dur_ms; } Note;
+
+static const Note mario_melody[] = {
+    {NOTE_E5, E}, {NOTE_E5, E}, {NOTE_REST, E}, {NOTE_E5, E},
+    {NOTE_REST, E}, {NOTE_C5, E}, {NOTE_E5, Q},
+    {NOTE_G5, Q}, {NOTE_REST, Q}, {NOTE_G4, Q},
+    {NOTE_REST, Q},
+
+    {NOTE_C5, Q}, {NOTE_REST, E}, {NOTE_G4, E},
+    {NOTE_REST, Q}, {NOTE_E4, Q},
+    {NOTE_A4, E}, {NOTE_REST, E}, {NOTE_B4, E},
+    {NOTE_REST, E}, {NOTE_AS4, E}, {NOTE_A4, Q},
+
+    {NOTE_G4, E}, {NOTE_E5, E}, {NOTE_G5, E},
+    {NOTE_A5, Q}, {NOTE_F5, E}, {NOTE_G5, E},
+    {NOTE_REST, E}, {NOTE_E5, Q},
+    {NOTE_C5, E}, {NOTE_D5, E}, {NOTE_B4, Q},
 };
 
 /* Simple tune — first 8 notes of Ode to Joy */
@@ -96,24 +125,58 @@ K_SEM_DEFINE(buzzer_sem, 0, 1);
 #define BUZZER_STACK_SIZE 512
 #define BUZZER_PRIORITY   5
 
+
+static void play_note(uint32_t freq_hz, uint32_t dur_ms)
+{
+    if (freq_hz == NOTE_REST || freq_hz == 0) {
+        pwm_set_dt(&buzzer, buzzer.period, 0);
+    } else {
+        uint32_t period_ns = NSEC_PER_SEC / freq_hz;
+        pwm_set_dt(&buzzer, period_ns, period_ns / 2U);
+    }
+    k_sleep(K_MSEC(dur_ms));
+    /* Brief gap between notes for articulation */
+    pwm_set_dt(&buzzer, buzzer.period, 0);
+    k_sleep(K_MSEC(10));
+}
+
 void buzzer_thread_fn(void *a, void *b, void *c)
 {
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
-
     while (1) {
         k_sem_take(&buzzer_sem, K_FOREVER);
-        printk("Beeping...\n");
+        printk("Playing Mario tune...\n");
+
+        for (size_t i = 0; i < ARRAY_SIZE(mario_melody); i++) {
+            play_note(mario_melody[i].freq_hz, mario_melody[i].dur_ms);
+        }
+
+        pwm_set_dt(&buzzer, buzzer.period, 0); /* ensure OFF */
+        printk("Tune done.\n");
+    }
+}
+
+
+// void buzzer_thread_fn(void *a, void *b, void *c)
+// {
+//     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+
+//     while (1) {
+//         k_sem_take(&buzzer_sem, K_FOREVER);
+//         printk("Beeping...\n");
 
 
         
-        pwm_set_dt(&buzzer,  buzzer.period, buzzer.period /2U);  /* ON */
-        k_sleep(K_MSEC(1000));
-        pwm_set_dt(&buzzer,  buzzer.period, 0);                  /* OFF */
+//         pwm_set_dt(&buzzer,  buzzer.period, buzzer.period /2U);  /* ON */
+//         k_sleep(K_MSEC(1000));
+//         pwm_set_dt(&buzzer,  buzzer.period, 0);                  /* OFF */
 
 
-        printk("Beeps done.\n");
-    }
-}
+//         printk("Beeps done.\n");
+//     }
+// }
+
+
 
 #define BUZZER_FREQ_NS  250000U   /* 4000 Hz = 250µs period */
 
@@ -244,6 +307,9 @@ int main(void)
     //     printk("LoRa config failed\n");
 	// 	return 0;
 	// }    
+
+    /* Temporary debug print to confirm effective resolution */
+    printk("Period cycles for E4: %u\n", (uint32_t)(CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC / 330));
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
