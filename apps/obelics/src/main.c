@@ -373,7 +373,7 @@
 LOG_MODULE_REGISTER(lora_tx, LOG_LEVEL_DBG);
 
 /* 1. Binding Hardware a tempo di compilazione */
-static const struct device *lora_dev = DEVICE_DT_GET(DT_NODELABEL(lora_sx1276));
+static const struct device *lora_dev = DEVICE_DT_GET(DT_NODELABEL(lora_sx1261));
 // static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 
 int main(void)
