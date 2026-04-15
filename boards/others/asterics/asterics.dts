@@ -7,6 +7,9 @@
 
 #include <zephyr/dt-bindings/led/led.h>
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/memory-attr/memory-attr-arm.h>
+#include <zephyr/dt-bindings/dma/stm32_dma.h>
+
 
 / {
     model = "AsterICS";
@@ -17,8 +20,7 @@
         zephyr,shell-uart = &usart1;
         zephyr,sram = &sram0;
         zephyr,flash = &flash0;
-        zephyr,led-strip = &strip_ring;
-        zephyr,led-strip = &strip_mcu;
+        zephyr,led-strip = &led_strip;
     };
 
     leds {
@@ -53,8 +55,17 @@
         };
     };
 
-    strip_ring: ws2812_0 {
+    neopixel_enable: neopixel-enable {
+        compatible = "gpio-keys";
+        neopixel_en: neopixel_en {
+            gpios = <&gpiof 6 GPIO_ACTIVE_HIGH>;
+            label = "neopxel mcu enable";
+        };
+    };
+
+    /* led_strip_1: ws2812_1 {
         compatible = "worldsemi,ws2812-gpio";
+
         chain-length = <24>;
         color-mapping = <LED_COLOR_ID_GREEN
                         LED_COLOR_ID_RED
@@ -71,8 +82,9 @@
         // sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
     };
 
-    strip_mcu: ws2812_1 {
-        compatible = "worldsemi,ws2812-gpio";
+    led_strip: ws2812_2 {
+        compatible = "worldsemi,ws2812-uart";
+
         chain-length = <12>;
         color-mapping = <LED_COLOR_ID_GREEN
                         LED_COLOR_ID_RED
@@ -85,7 +97,7 @@
         delay-t0l = <800>;
         reset-delay = <8000>;
         
-    };
+    }; */
 
     pwm_devices {
         buzzer_pwm: buzzer_pwm {
@@ -104,6 +116,66 @@
             // canale 3, 20ms period (50Hz)
             pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>; 
         };
+    };
+    
+    regulators {
+        /* Primo alimentatore: es. per i sensori ambientali */
+        sensor_board_vdd: regulator_sensor_board_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "sensor_board_vdd_3v3";
+            enable-gpios = <&gpiof 12 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
+            
+            startup-delay-us = <1000>; /* Tempo di assestamento prima che sia pronto */
+            
+            regulator-boot-on; 
+        };
+
+        neopixel_ring_vdd: regulator_neopixel_ring_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "neopixel_ring_5v";
+            enable-gpios = <&gpiof 5 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
+            
+            startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
+            
+            regulator-boot-on; 
+            //regulator-boot-off;
+        };
+
+        pyro_vdd: regulator_pyro_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "pyro_6v";
+            enable-gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
+            
+            startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
+            
+            //regulator-boot-on; 
+            regulator-boot-off;
+        };
+
+        servo_vdd: regulator_servo_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "servo_6v";
+            enable-gpios = <&gpiof 10 GPIO_ACTIVE_HIGH>;
+
+            startup-delay-us = <200>;
+            
+            regulator-boot-off;
+        };
+
+        runcam_vdd: regulator_runcam_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "runcam_pwr";
+            enable-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+            
+            startup-delay-us = <2000>;
+            
+            regulator-boot-off;
+        };
+
+        //Telemetry regulator (not available)
+
+        //mcu regulator (not available)
+
     };
 };
 
@@ -209,6 +281,14 @@
     pinctrl-names = "default";
 
     //TODO: clocks = <&rcc STM32_CLOCK(APB4, 
+
+    // I2C4 ha a disposizione il BDMA, che può raggiungere locazioni di RAM solo nel dominio SRAM4
+    // Vedi Table 2 dell'RM0468
+
+    // i2c4_rx
+    dmas = <&dmamux2 0 13 (STM32_DMA_PERIPH_RX | STM32_DMA_PERIPH_NO_INC | STM32_DMA_PERIPH_8BITS | STM32_DMA_OFFSET_LINKED_BUS | STM32_DMA_PRIORITY_MEDIUM)>;
+    // i2c4_tx
+    dmas = <&dmamux2 1 14 (STM32_DMA_PERIPH_TX | STM32_DMA_PERIPH_NO_INC | STM32_DMA_PERIPH_8BITS | STM32_DMA_OFFSET_LINKED_BUS | STM32_DMA_PRIORITY_MEDIUM)>;
 
     //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
     ina219_mcu: ina219@41 {
@@ -630,6 +710,10 @@
 
 };
 
+&sram4 {
+    zephyr,memory-attr = <( DT_MEM_ARM(ATTR_MPU_RAM_NOCACHE) )>;
+};
+
 &sdmmc2 {
     // DMA NON disponibile per questa periferica
     status = "okay";
@@ -702,6 +786,66 @@
     current-speed = <115200>;
 };
 
+&uart4 {
+    status = "okay";
+    pinctrl-0 = <&uart4_ws2812_mcu &uart4_ws2812_ring>;
+    pinctrl-names = "default";
+
+    reg = <0x40004C00 DT_SIZE_K(1024)>;
+
+    current-speed = <2400000>; /* 2.5 MHz baudrate */
+       /* Frame constraint: (1 start + 7 data + 1 stop) = 9 bits total. */
+    data-bits = <7>;
+    /* tx-invert is required to create an idle-low signal. */
+    tx-invert;
+
+    dmas = <&dmamux1 0 64 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>;
+    dma-names = "tx";
+
+    /* /* clocks = <&rcc STM32_CLOCK(APB1, 16)>,                 /* 1. Clock del bus (Accensione periferica) */
+            // <&rcc STM32_SRC_PLL3_Q USART2345678_SEL(2)>;   /* 2. Clock di dominio (Baud rate a 64MHz) */ */ */
+
+    led_strip: ws2812-strip {
+        compatible = "worldsemi,ws2812-uart";
+        status = "okay";
+        chain-length = <12>;
+        
+        bits-per-symbol = <3>;
+        
+        one-symbol = <6>;   /* 0b110 */
+        zero-symbol = <4>;  /* 0b100 */
+        reset-delay = <50>; 
+
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+    };
+};
+
+&dmamux1 {
+    status = "okay";
+};
+
+&dmamux2 {
+    status = "okay";
+};
+
+&pinctrl {
+    uart4_ws2812_mcu: uart4_tx_ws2812 {
+        pinmux = <STM32_PINMUX('B', 9, AF8)>;
+        bias-disable;
+        drive-push-pull;
+        slew-rate = "very-high-speed";
+    };
+
+    uart4_ws2812_ring: uart4_rx_ws2812 {
+        pinmux = <STM32_PINMUX('B', 8, AF8)>;
+        bias-disable;
+        drive-push-pull;
+        slew-rate = "very-high-speed";
+    };
+};
+
 &uart5 {
     status = "okay";
 
@@ -763,6 +907,19 @@
         zephyr,resolution = <16>;
         //label = "PB0";
     };
+};
+
+
+&dma1 {
+    status = "okay";
+};
+
+&dma2 {
+    status = "okay";
+};
+
+&bdma1 {
+    status = "okay";
 };
 
 &gpioa {

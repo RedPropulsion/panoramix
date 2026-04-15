@@ -49,8 +49,9 @@
 			}
         ]
     },
-    "launch": {
+   /* "launch": {
         "configurations": [
+
             {
                 "name": "debug",
                 "type": "cortex-debug",
@@ -59,14 +60,21 @@
                 "cwd": "${workspaceFolder}",
                 "executable": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics/build/zephyr.elf", //TODO: correct?
                 "device": "STM32H723",
-                "preLaunchTask": "west build"
-                /*"configFiles": [
-                    "target/.cfg" // TODO: needed?
-                ]
-                */
+                "preLaunchTask": "west build",
+                "gdbPath": "/home/toshn/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
+                "configFiles": [
+                    "interface/stlink.cfg",
+                    "target/stm32h7x.cfg"
+                ],
+                "openOCDLaunchCommands": [
+                    "reset_config srst_only"
+                ],
+                "svdFile": "${workspaceFolder}/panoramix/build/zephyr/zephyr.svd",
+                "runToEntryPoint": "main",
+                "showDevDebugOutput": "none"
             }
         ]
-    },
+    }, */
     "extensions": {
         "recommendations": [
             "ms-vscode.cpptools-extension-pack",
