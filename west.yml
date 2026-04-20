@@ -15,3 +15,5 @@ manifest:
           - loramac-node
           - lora-basics-modem
           - hal_semtech
+          - fatfs
+          - littlefs
