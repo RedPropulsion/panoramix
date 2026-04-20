@@ -418,7 +418,7 @@ int main(void)
         return -1;
     }
 
-    LOG_INF("Inizio trasmissione su 868 MHz a 4 dBm...");
+    // LOG_INF("Inizio trasmissione su 868 MHz a 4 dBm...");
 
     /* 4. Ciclo di Trasmissione Continuo */
     while (1) {

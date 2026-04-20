@@ -78,53 +78,23 @@
 
 
 /////////////////////////////////// NON FUNZIONA OBELICS
-&spi1 { // Radio LoRa SX1276
-	status = "okay";
+&spi1 { // Radio LoRa SX1261
+ 	status = "okay";
     pinctrl-names = "default";
 
-    pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pb5>; //NOTE: SPI4 written down on documentation is wrong.
+    pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pb5>;
     cs-gpios = <&gpiog 12 (GPIO_ACTIVE_LOW)>;
 
-    //DMA: connected both tx and rx
-    //dmas = <&dmamux1 0 84 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>,
-     //      <&dmamux1 1 83 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>;
-    //dma-names = "tx", "rx";
-    
-
-    lora_sx1261: SX1261@0 {
+    lora_sx1261: lora@0 {
         status = "okay";
-        // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
         compatible = "semtech,sx1261";
         reg = <0>;
-
         spi-max-frequency = <1000000>;
-        
         label = "SX1261";
 
         reset-gpios = <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
-        
         dio1-gpios = <&gpioe 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
-
         busy-gpios = <&gpioe 13 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
-
-		dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8>;
-		tcxo-power-startup-delay-ms = <5>;
-		// regulator-ldo = "true"; //POTREbbe essere da mettere se qualcosa non funziona
-		spi-max-frequency = <1000000>;
-        dio2-tx-enable;
-        regulator-ldo;
-        
-        // <&gpiob 6 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiob 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiod 13 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiod 12 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpiod 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>,
-		// 	    <&gpioe 2 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
-
-        // power-amplifier-output = "pa-boost";
-        
-        // alias = "lora0";
-        
     };
 };
 
