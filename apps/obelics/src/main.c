@@ -2,7 +2,6 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
-#include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/lora.h>
@@ -12,7 +11,7 @@
 #include <zephyr/storage/disk_access.h>
 
 
-LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* ------------------------------------------------------------------ *
  * SD Card / FATFS
@@ -122,8 +121,9 @@ static int fatfs_mount()
 /* ------------------------------------------------------------------ *
  * LoRa
  * ------------------------------------------------------------------ */
-// #define LORA_NODE DT_NODELABEL(lora0)
-// LOG_MODULE_REGISTER(lora_tx, LOG_LEVEL_DBG);
+#define LORA_NODE DT_NODELABEL(lora_sx1261)
+static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
+static struct lora_modem_config lora_tx_config;
 
 // BUILD_ASSERT(DT_NODE_HAS_STATUS_OKAY(LORA_NODE),
 // 	     "No LoRa0 radio specified in DT");
@@ -245,14 +245,14 @@ void buzzer_thread_fn(void *a, void *b, void *c)
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
     while (1) {
         k_sem_take(&buzzer_sem, K_FOREVER);
-        printk("Playing Mario tune...\n");
+        LOG_INF("Buzzer Playing");
 
         for (size_t i = 0; i < ARRAY_SIZE(mario_melody); i++) {
             play_note(mario_melody[i].freq_hz, mario_melody[i].dur_ms);
         }
 
         pwm_set_dt(&buzzer, buzzer.period, 0); /* ensure OFF */
-        printk("Tune done.\n");
+        LOG_INF("Buzzer Done");
     }
 }
 
@@ -281,7 +281,6 @@ void button_handler(const struct device *dev, struct gpio_callback *cb,
     if (now - last_time < 200) return;
     last_time = now;
 
-    printk("Button pressed!\n");
     k_sem_give(&buzzer_sem);  /* wake buzzer thread */
 }
 
@@ -325,7 +324,7 @@ void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t
     if (now - last_time < 50) return;
     last_time = now;
     selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
-    printk("\n---> Now adjusting LED %d <---\n", selected_led);
+    LOG_DBG("Selected LED %d <---", selected_led);
 }
 
 void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
@@ -343,7 +342,7 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
             if (intervals[selected_led] > step)
                 intervals[selected_led] -= step;
         }
-        printk("LED sel=%d intervals: %d \t %d \t %d ms\n",
+        LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
                selected_led, intervals[0], intervals[1], intervals[2]);
     } else {
         enc_sw_handler(dev, cb, pins);
@@ -355,42 +354,33 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
  * ------------------------------------------------------------------ */
 int main(void)
 {   
-     printk("=== main() entered ===\n");  // add this immediately
-    /* LoRa */
-    // const struct device *const lora_dev = DEVICE_DT_GET(LORA_NODE);
-    // struct lora_modem_config config;
+     LOG_INF("Starting main()");
     int ret;
-    // int len;
 
-    // Receive buffer and metadata
-    // uint8_t data[MAX_DATA_LEN] = {0};
-	// int16_t rssi;
-	// int8_t snr;
-    
-    // if (!device_is_ready(lora_dev)) {
-	// 	printk("LoRa Device not ready");
-	// 	return 0;
-	// }
+    /* Initialize LoRa device */
+    if (!device_is_ready(lora_dev)) {
+        LOG_ERR("LoRa device not ready");
+    } else {
+        lora_tx_config.frequency = 868000000;
+        lora_tx_config.bandwidth = BW_125_KHZ;
+        lora_tx_config.datarate = SF_7;
+        lora_tx_config.coding_rate = CR_4_5;
+        lora_tx_config.preamble_len = 12;
+        lora_tx_config.tx_power = 4;
+        lora_tx_config.tx = true;
+        lora_tx_config.iq_inverted = false;
+        lora_tx_config.public_network = false;
 
-	// config.frequency = 868000000;
-	// config.bandwidth = BW_125_KHZ;
-	// config.datarate = SF_7;
-	// config.preamble_len = 12;
-	// config.coding_rate = CR_4_5;
-	// config.iq_inverted = false;
-	// config.public_network = false;
-	// config.tx_power = 4;
-	// config.tx = false;
-
-
-    // ret = lora_config(lora_dev, &config);
-	// if (ret < 0) {
-    //     printk("LoRa config failed\n");
-	// 	return 0;
-	// }    
+        ret = lora_config(lora_dev, &lora_tx_config);
+        if (ret < 0) {
+            LOG_ERR("LoRa config failed: %d", ret);
+        } else {
+            LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+        }
+    }
 
     /* Mount SD card */
-    LOG_INF("Initializing SD card... \n if CONFIG_FAT_FILESYSTEM_ELM is enabled, you should see SD card info below");
+    LOG_INF("Initializing SD card");
     #ifdef CONFIG_FAT_FILESYSTEM_ELM
     LOG_INF("Mounting SD card...");
     fatfs_mount();
@@ -457,22 +447,29 @@ int main(void)
     // LOG_DBG("Button init done. Current pin state: %d\n", gpio_pin_get_dt(&user_btn));
 
     ret = gpio_pin_interrupt_configure_dt(&user_btn, GPIO_INT_EDGE_FALLING);
-    LOG_DBG("Interrupt configure returned: %d\n", ret);
 
     gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
     ret = gpio_add_callback(user_btn.port, &btn_cb_data);
-    // LOG_DBG("Add callback returned: %d\n", ret);
 
-    LOG_INF("Starting main loop...\n");
+
 
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
+    uint8_t tx_buf[] = "Hello LoRa!";
+    int lora_counter = 0;
 
 
-    // LOG_INF("Synchronous reception");
-
+    LOG_INF("Starting main loop...\n");
     while (1) {
-
+        /* LoRa TX every 5 seconds */
+        if (device_is_ready(lora_dev)) {
+            int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
+            if (err == 0) {
+                LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
+            } else {
+                LOG_ERR("LoRa TX failed: %d", err);
+            }
+        }
 
         memset(pixels, 0, sizeof(pixels));
         if (toggle) {
@@ -483,89 +480,7 @@ int main(void)
         toggle = !toggle;
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
-        k_sleep(K_SECONDS(1));
+        k_sleep(K_SECONDS(5));
     }
     return 0;
 }
-
-
-////////////////////////////////////////////////////////////////////////////////
-/*
- * SX127x LoRa driver for Zephyr
- */
-
-// #include <zephyr/kernel.h>
-// #include <zephyr/device.h>
-// #include <zephyr/drivers/lora.h>
-// #include <zephyr/drivers/gpio.h>
-// #include <zephyr/logging/log.h>
-
-// LOG_MODULE_REGISTER(lora_tx, LOG_LEVEL_DBG);
-
-// /* 1. Binding Hardware a tempo di compilazione */
-// static const struct device *lora_dev = DEVICE_DT_GET(DT_NODELABEL(lora_sx1276));
-// // static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
-
-// int main(void)
-// {
-//     printk("Starting LoRa TX example...\n");
-//     struct lora_modem_config config;
-//     int err;
-//     uint8_t tx_buf[] = "Test Zephyr 4dBm"; /* Payload da trasmettere */
-
-//     /* 2. Verifica dispositivi e GPIO */
-//     if (!device_is_ready(lora_dev)) {
-//         LOG_ERR("Modulo LoRa non pronto!");
-//         return -1;
-//     }
-
-//     // if (!gpio_is_ready_dt(&led)) {
-//     //     LOG_ERR("Controller GPIO per il LED non pronto!");
-//     //     return -1;
-//     // }
-
-//     // gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
-
-//     /* 3. Configurazione Modem RF per Trasmissione */
-//     config.frequency = 868000000;
-//     config.bandwidth = BW_125_KHZ;
-//     config.datarate = SF_7;
-//     config.coding_rate = CR_4_5;
-//     config.preamble_len = 12;
-    
-//     /* MODIFICA: Imposta la potenza di trasmissione a 4 dBm */
-//     config.tx_power = 4; 
-    
-//     /* MODIFICA: Indica al driver di preparare la catena RF per la trasmissione */
-//     config.tx = true; 
-    
-//     config.iq_inverted = false;
-//     config.public_network = false;
-
-//     err = lora_config(lora_dev, &config);
-//     if (err < 0) {
-//         LOG_ERR("Errore configurazione LoRa: %d", err);
-//         return -1;
-//     }
-
-//     LOG_INF("Inizio trasmissione su 868 MHz a 4 dBm...");
-
-//     /* 4. Ciclo di Trasmissione Continuo */
-//     while (1) {
-//         /* lora_send() trasferisce i dati al buffer FIFO via SPI (o bus interno su STM32WL)
-//          * e innesca la modalità TX impostando il registro OPMODE.
-//          */
-//         err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
-        
-//         if (err == 0) {
-//             LOG_INF("Inviati %d bytes con successo.", sizeof(tx_buf));
-//         } else {
-//             LOG_ERR("Errore in trasmissione: %d", err);
-//         }
-
-//         /* Sleep per sospendere il thread e rispettare il Duty Cycle.
-//          * Previene l'errore -11 (-EAGAIN) descritto in precedenza. 
-//          */
-//         k_sleep(K_SECONDS(1));
-//     }
-// }
