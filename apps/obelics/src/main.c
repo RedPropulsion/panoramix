@@ -240,9 +240,44 @@ static void play_note(uint32_t freq_hz, uint32_t dur_ms)
     k_sleep(K_MSEC(10));
 }
 
+<<<<<<< HEAD
 void buzzer_thread_fn(void *a, void *b, void *c)
 {
     ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
+=======
+    // if (!gpio_is_ready_dt(&led)) {
+    //     LOG_ERR("Controller GPIO per il LED non pronto!");
+    //     return -1;
+    // }
+
+    // gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+
+    /* 3. Configurazione Modem RF per Trasmissione */
+    config.frequency = 868000000;
+    config.bandwidth = BW_125_KHZ;
+    config.datarate = SF_7;
+    config.coding_rate = CR_4_5;
+    config.preamble_len = 12;
+    
+    /* MODIFICA: Imposta la potenza di trasmissione a 4 dBm */
+    config.tx_power = 4; 
+    
+    /* MODIFICA: Indica al driver di preparare la catena RF per la trasmissione */
+    config.tx = true; 
+    
+    config.iq_inverted = false;
+    config.public_network = false;
+
+    err = lora_config(lora_dev, &config);
+    if (err < 0) {
+        LOG_ERR("Errore configurazione LoRa: %d", err);
+        return -1;
+    }
+
+    // LOG_INF("Inizio trasmissione su 868 MHz a 4 dBm...");
+
+    /* 4. Ciclo di Trasmissione Continuo */
+>>>>>>> 4f02444 (LoRa Funzionante in trasmissione)
     while (1) {
         k_sem_take(&buzzer_sem, K_FOREVER);
         LOG_INF("Buzzer Playing");
