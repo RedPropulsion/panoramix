@@ -1,0 +1,7 @@
+config ST3215_SERVO
+    bool "Waveshare ST3215 Serial Bus Servo driver"
+    default y
+    depends on DT_HAS_WAVESHARE_ST3215_ENABLED
+    select UART_INTERRUPT_DRIVEN if $(success,test -e ${ZEPHYR_BASE}/include/zephyr/drivers/uart.h) 
+    help
+      Enable the Waveshare ST3215 servo driver.
