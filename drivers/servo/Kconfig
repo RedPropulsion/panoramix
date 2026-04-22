@@ -1,0 +1,3 @@
+if SERVO
+rsource "st3215/Kconfig"
+endif # SERVO

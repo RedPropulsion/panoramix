@@ -1,0 +1,1 @@
+add_subdirectory_ifdef(CONFIG_ST3215_SERVO st3215)
