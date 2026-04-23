@@ -41,7 +41,7 @@ _(Inside the virtual environment)_
 ```bash
 pip install west
 
-west init -m git@github.com:RedPropulsion/panoramix.git panoramix
+west init -m git@github.com:RedPropulsion/panoramix
 ```
 
 > uv:
