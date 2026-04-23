@@ -73,7 +73,7 @@
         gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
 
     //parametri di default per WS2812. Se necessario, modificarli
-        delay-t1h = <700>;   
+        delay-t1h = <700>;
         delay-t1l = <600>;
         delay-t0h = <350>;
         delay-t0l = <800>;
@@ -96,48 +96,48 @@
         delay-t0h = <350>;
         delay-t0l = <800>;
         reset-delay = <8000>;
-        
+
     }; */
 
     pwm_devices {
         buzzer_pwm: buzzer_pwm {
             compatible = "pwm";
-            pwms = <&pwm14 0 250000 PWM_POLARITY_NORMAL>; 
+            pwms = <&pwm14 0 250000 PWM_POLARITY_NORMAL>;
         };
 
         servo_drogue_pwm: servo_drogue_pwm {
             compatible = "pwm";
             // canale 1, 20ms period (50Hz)
-            pwms = <&pwm3 0 20000000 PWM_POLARITY_NORMAL>; 
+            pwms = <&pwm3 0 20000000 PWM_POLARITY_NORMAL>;
         };
 
         servo_main_pwm: servo_main_pwm {
             compatible = "pwm";
             // canale 3, 20ms period (50Hz)
-            pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>; 
+            pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>;
         };
     };
-    
+
     regulators {
         /* Primo alimentatore: es. per i sensori ambientali */
         sensor_board_vdd: regulator_sensor_board_vdd {
             compatible = "regulator-fixed";
             regulator-name = "sensor_board_vdd_3v3";
             enable-gpios = <&gpiof 12 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
-            
+
             startup-delay-us = <1000>; /* Tempo di assestamento prima che sia pronto */
-            
-            regulator-boot-on; 
+
+            regulator-boot-on;
         };
 
         neopixel_ring_vdd: regulator_neopixel_ring_vdd {
             compatible = "regulator-fixed";
             regulator-name = "neopixel_ring_5v";
             enable-gpios = <&gpiof 5 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
-            
+
             startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
-            
-            //regulator-boot-on; 
+
+            //regulator-boot-on;
             regulator-boot-off;
         };
 
@@ -145,10 +145,10 @@
             compatible = "regulator-fixed";
             regulator-name = "pyro_6v";
             enable-gpios = <&gpiof 5 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
-            
+
             startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
-            
-            //regulator-boot-on; 
+
+            //regulator-boot-on;
             regulator-boot-off;
         };
 
@@ -158,7 +158,7 @@
             enable-gpios = <&gpiof 10 GPIO_ACTIVE_HIGH>;
 
             startup-delay-us = <200>;
-            
+
             regulator-boot-off;
         };
 
@@ -166,9 +166,9 @@
             compatible = "regulator-fixed";
             regulator-name = "runcam_pwr";
             enable-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
-            
+
             startup-delay-us = <2000>;
-            
+
             regulator-boot-off;
         };
 
@@ -177,6 +177,10 @@
         //mcu regulator (not available)
 
     };
+};
+
+&pwr {
+    power-supply = "ldo";
 };
 
 &sram0 {
@@ -280,7 +284,7 @@
     pinctrl-0 = <&i2c4_scl_pd12 &i2c4_sda_pd13>;
     pinctrl-names = "default";
 
-    //TODO: clocks = <&rcc STM32_CLOCK(APB4, 
+    //TODO: clocks = <&rcc STM32_CLOCK(APB4,
 
     // I2C4 ha a disposizione il BDMA, che può raggiungere locazioni di RAM solo nel dominio SRAM4
     // Vedi Table 2 dell'RM0468
@@ -298,7 +302,7 @@
         //required
         lsb-microamp = <50>;    //consente di avere una dinamica di 1.6A
         shunt-milliohm = <27>;
-        
+
         //optional
         brng = <1>;     //BUS Voltage: 0: 16V, 1: 32V
         pg = <0>;       //±40 mV, ho un leggero overflow nel caso di consumo di alta corrente, ma non dovrebbe accadere mai
@@ -314,7 +318,7 @@
         //required
         lsb-microamp = <50>;    //consente di avere una dinamica di 1.6A
         shunt-milliohm = <27>;
-        
+
         //optional
         brng = <1>;
         pg = <0>;       //±40 mV
@@ -330,7 +334,7 @@
         //required
         lsb-microamp = <100>;
         shunt-milliohm = <27>;
-        
+
         //optional
         brng = <1>;
         pg = <1>;       //±80 mV
@@ -346,7 +350,7 @@
         //required
         lsb-microamp = <100>;
         shunt-milliohm = <27>;
-        
+
         //optional
         brng = <1>;
         pg = <1>;       //±80 mV
@@ -362,7 +366,7 @@
         //required
         lsb-microamp = <30>;
         shunt-milliohm = <27>;
-        
+
         //optional
         brng = <1>;
         pg = <0>;       //±40 mV
@@ -378,7 +382,7 @@
         //required
         lsb-microamp = <100>;
         shunt-milliohm = <27>;
-        
+
         //optional
         brng = <1>;
         pg = <1>;
@@ -419,7 +423,7 @@
             Memory Type:  0x20 (SPI)
            Capacity:     0x1a (512Mbit) */
         jedec-id = [C2 20 1a];  //check for different data size and memory type
-    
+
         /* Partizionamento (Opzionale ma raccomandato) */
         partitions {
             compatible = "fixed-partitions";
@@ -491,7 +495,7 @@
         friendly-name = "icm42688-p-A";
 
         int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-        
+
         /* Accel Config */
         accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
         accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
@@ -559,7 +563,7 @@
         friendly-name = "icm42688-p-B";
 
         int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-        
+
         /* Accel Config */
         accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
         accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
@@ -668,7 +672,7 @@
         friendly-name = "icm42688-p-mcu";
 
         int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-        
+
         /* Accel Config */
         accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
         accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
@@ -683,10 +687,10 @@
         /* Correzione assi */
         /* axis-align-x = <SENSOR_AXIS_ALIGN_DT_Y>;
         axis-align-x-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
-        
+
         axis-align-y = <SENSOR_AXIS_ALIGN_DT_X>;
         axis-align-y-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
-        
+
         axis-align-z = <SENSOR_AXIS_ALIGN_DT_Z>;
         axis-align-z-sign = <SENSOR_AXIS_ALIGN_DT_NEG>; */
     };
@@ -718,19 +722,19 @@
     // DMA NON disponibile per questa periferica
     status = "okay";
     pinctrl-0 = <&sdmmc2_ck_pd6 &sdmmc2_cmd_pd7
-                &sdmmc2_d0_pg9 &sdmmc2_d1_pg10 
+                &sdmmc2_d0_pg9 &sdmmc2_d1_pg10
                 &sdmmc2_d2_pg11 &sdmmc2_d3_pg12>;
     pinctrl-names = "default";
 
     cd-gpios = <&gpioa 10 GPIO_ACTIVE_LOW>;
-    
+
     bus-width =<4>;
 
     clk-div = <2>; //the output bus frequency is FREQ_BUS = SDMMMC_CLK / [CLKDIV + 2]
 
     clocks = <&rcc STM32_CLOCK(AHB2, 9)>,
             <&rcc STM32_SRC_PLL2_R SDMMC_SEL(1)>; //SDMMMC_CLK = 64MHz
-    
+
     #address-cells = <1>;
     #size-cells = <1>;
 
@@ -808,12 +812,12 @@
         compatible = "worldsemi,ws2812-uart";
         status = "okay";
         chain-length = <12>;
-        
+
         bits-per-symbol = <3>;
-        
+
         one-symbol = <6>;   /* 0b110 */
         zero-symbol = <4>;  /* 0b100 */
-        reset-delay = <50>; 
+        reset-delay = <50>;
 
         color-mapping = <LED_COLOR_ID_GREEN
                          LED_COLOR_ID_RED
@@ -859,15 +863,15 @@
     status = "okay";
     pinctrl-0 = <&adc1_inp9_pb0
                 &adc1_inp8_pc5>;
-    
-    pinctrl-names = "default"; 
+
+    pinctrl-names = "default";
 
     //resolutions = <STM32_ADC_RES(16, 0x00);
 
     st,adc-clock-source = "ASYNC";
 
 
-    // Il primo è il clock di bus, il secondo è quello della periferica. 
+    // Il primo è il clock di bus, il secondo è quello della periferica.
     //è possibile anche aggiungere un fattore di divisione per un prescaler del clock in ingresso
     // il secondo elemento va messo se si sceglie di usare un clock-source async
     clocks = <&rcc STM32_CLOCK(AHB1, 5)>,
@@ -879,7 +883,7 @@
 
     //sampling-times = <33>; // FIXME: random magic number, check in cubemx
     //st,adc-sequencer = "fixed";
-    
+
     #address-cells = <1>;
     #size-cells = <0>;
 
