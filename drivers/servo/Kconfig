@@ -17,5 +17,6 @@ config SERVO_INIT_PRIORITY
 	  (which defaults to 50).
 
 rsource "generic_pwm/Kconfig"
+rsource "st3215/Kconfig"
 
 endif # SERVO
