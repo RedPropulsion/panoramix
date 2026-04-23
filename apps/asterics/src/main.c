@@ -1,5 +1,6 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/servo.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
@@ -160,4 +161,4 @@ void k_sys_fatal_error_handler(unsigned int reason,
   }
 
   k_fatal_halt(reason);
-}
+};

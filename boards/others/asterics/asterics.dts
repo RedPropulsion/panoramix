@@ -104,17 +104,25 @@
             compatible = "pwm";
             pwms = <&pwm14 0 250000 PWM_POLARITY_NORMAL>;
         };
+    };
 
+    servos {
         servo_drogue_pwm: servo_drogue_pwm {
-            compatible = "pwm";
+            compatible = "generic,pwm-servo";
             // canale 1, 20ms period (50Hz)
             pwms = <&pwm3 0 20000000 PWM_POLARITY_NORMAL>;
+            min-pulse = <PWM_USEC(500)>;
+            max-pulse = <PWM_USEC(2500)>;
+            max-angle = <270000>;
         };
 
         servo_main_pwm: servo_main_pwm {
-            compatible = "pwm";
+            compatible = "generic,pwm-servo";
             // canale 3, 20ms period (50Hz)
             pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>;
+            min-pulse = <PWM_USEC(500)>;
+            max-pulse = <PWM_USEC(2500)>;
+            max-angle = <270000>;
         };
     };
 

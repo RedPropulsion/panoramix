@@ -1,0 +1,11 @@
+config SERVO_GENERIC_PWM
+	bool "Generic PWM servo driver"
+	default y
+	depends on SERVO
+	depends on DT_HAS_GENERIC_PWM_SERVO_ENABLED
+	select PWM
+	help
+	  Enable the generic PWM servo driver. Supports any hobby servo
+	  controlled by a standard PWM signal (typically 1-2 ms pulse at
+	  50 Hz). Position feedback via get_position() returns the last
+	  commanded angle only; no hardware feedback is available.
