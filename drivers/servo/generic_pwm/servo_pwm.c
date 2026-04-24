@@ -71,7 +71,6 @@ static DEVICE_API(servo, servo_pwm_api) = {
 };
 
 #define SERVO_PWM_INIT(inst)                                                   \
-  static struct servo_pwm_data servo_pwm_data_##inst;                          \
   static const struct servo_pwm_config servo_pwm_cfg_##inst = {                \
       .pwm = PWM_DT_SPEC_INST_GET(inst),                                       \
       .min_pulse_ns = DT_INST_PROP(inst, min_pulse),                           \
