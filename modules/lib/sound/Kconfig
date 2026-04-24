@@ -1,0 +1,3 @@
+config SOUND
+    bool "Sound module"
+    default y
