@@ -17,3 +17,4 @@ manifest:
           - hal_semtech
           - fatfs
           - littlefs
+          - sound

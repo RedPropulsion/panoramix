@@ -1,3 +1,6 @@
 build/
 .cache/
 apps/obelics/src/TODO.md
+apps/obelics/src/ARCHITECTURE.md
+apps/obelics/src/notes.md
+apps/obelics/src/SD_CARD_PLAN.md

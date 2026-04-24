@@ -9,14 +9,13 @@
 #include <zephyr/fs/fs.h>
 // #include <ff.h>
 #include <zephyr/storage/disk_access.h>
-
+#include "sound.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* ------------------------------------------------------------------ *
  * SD Card / FATFS
  * ------------------------------------------------------------------ */
-
 #ifdef CONFIG_FAT_FILESYSTEM_ELM
 #include <ff.h>
 #include <string.h>
@@ -125,35 +124,6 @@ static int fatfs_mount()
 static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
 static struct lora_modem_config lora_tx_config;
 
-// BUILD_ASSERT(DT_NODE_HAS_STATUS_OKAY(LORA_NODE),
-// 	     "No LoRa0 radio specified in DT");
-
-
-
-
-// #define MAX_DATA_LEN 255
-
-// void lora_receive_cb(const struct device *dev, uint8_t *data, uint16_t size,
-// 		     int16_t rssi, int8_t snr, void *user_data)
-// {
-// 	static int cnt;
-
-// 	ARG_UNUSED(dev);
-// 	ARG_UNUSED(size);
-// 	ARG_UNUSED(user_data);
-
-// 	LOG_INF("LoRa RX RSSI: %d dBm, SNR: %d dB", rssi, snr);
-// 	// LOG_HEXDUMP_INF(data, size, "LoRa RX payload");
-
-// 	/* Stop receiving after 10 packets */
-// 	if (++cnt == 10) {
-// 		LOG_INF("Stopping packet receptions");
-// 		lora_recv_async(dev, NULL, NULL);
-// 	}
-// }
-
-// char data[MAX_DATA_LEN] = {'h', 'e', 'l', 'l', 'o', 'w', 'o', 'r', 'l', 'd', ' ', '0'};
-
 /* ------------------------------------------------------------------ *
  * Neopixel
  * ------------------------------------------------------------------ */
@@ -163,106 +133,6 @@ static struct lora_modem_config lora_tx_config;
 static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
-
-/* ------------------------------------------------------------------ *
- * Buzzer — PWM on PE4 via TIM15_CH1
- * ------------------------------------------------------------------ */
-static const struct pwm_dt_spec buzzer =
-    PWM_DT_SPEC_GET(DT_NODELABEL(buzzer)); //TODO: rename to buzzer at some point maybe.
-uint32_t period = PWM_HZ(4000);
-
-/* Simple note definitions — period in nanoseconds */
-#define NOTE_E5  659
-#define NOTE_C5  523
-#define NOTE_G5  784
-#define NOTE_G4  392
-#define NOTE_A4  440
-#define NOTE_B4  494
-#define NOTE_AS4 466
-#define NOTE_F5  698
-#define NOTE_E4  330
-#define NOTE_A5  880
-#define NOTE_D5  587
-#define NOTE_DS5 622
-#define NOTE_REST 0
-
-#define BPM        200
-#define BEAT_MS    (60000 / BPM)
-#define Q          BEAT_MS          /* quarter note */
-#define E          (BEAT_MS / 2)    /* eighth note */
-#define H          (BEAT_MS * 2)    /* half note */
-
-struct note {
-    uint32_t period_ns;
-    uint32_t duration_ms;
-};
-
-typedef struct { uint32_t freq_hz; uint32_t dur_ms; } Note;
-
-static const Note mario_melody[] = {
-    {NOTE_E5, E}, {NOTE_E5, E}, {NOTE_REST, E}, {NOTE_E5, E},
-    {NOTE_REST, E}, {NOTE_C5, E}, {NOTE_E5, Q},
-    {NOTE_G5, Q}, {NOTE_REST, Q}, {NOTE_G4, Q},
-    {NOTE_REST, Q},
-
-    {NOTE_C5, Q}, {NOTE_REST, E}, {NOTE_G4, E},
-    {NOTE_REST, Q}, {NOTE_E4, Q},
-    {NOTE_A4, E}, {NOTE_REST, E}, {NOTE_B4, E},
-    {NOTE_REST, E}, {NOTE_AS4, E}, {NOTE_A4, Q},
-
-    {NOTE_G4, E}, {NOTE_E5, E}, {NOTE_G5, E},
-    {NOTE_A5, Q}, {NOTE_F5, E}, {NOTE_G5, E},
-    {NOTE_REST, E}, {NOTE_E5, Q},
-    {NOTE_C5, E}, {NOTE_D5, E}, {NOTE_B4, Q},
-};
-
-/* Semaphore — button ISR signals buzzer thread */
-K_SEM_DEFINE(buzzer_sem, 0, 1);
-
-/* ------------------------------------------------------------------ *
- * Buzzer thread
- * ------------------------------------------------------------------ */
-#define BUZZER_STACK_SIZE 512
-#define BUZZER_PRIORITY   5
-
-
-static void play_note(uint32_t freq_hz, uint32_t dur_ms)
-{
-    if (freq_hz == NOTE_REST || freq_hz == 0) {
-        pwm_set_dt(&buzzer, buzzer.period, 0);
-    } else {
-        uint32_t period_ns = NSEC_PER_SEC / freq_hz;
-        pwm_set_dt(&buzzer, period_ns, period_ns / 2U);
-    }
-    k_sleep(K_MSEC(dur_ms));
-    /* Brief gap between notes for articulation */
-    pwm_set_dt(&buzzer, buzzer.period, 0);
-    k_sleep(K_MSEC(10));
-}
-
-void buzzer_thread_fn(void *a, void *b, void *c)
-{
-    ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
-    while (1) {
-        k_sem_take(&buzzer_sem, K_FOREVER);
-        LOG_INF("Buzzer Playing");
-
-        for (size_t i = 0; i < ARRAY_SIZE(mario_melody); i++) {
-            play_note(mario_melody[i].freq_hz, mario_melody[i].dur_ms);
-        }
-
-        pwm_set_dt(&buzzer, buzzer.period, 0); /* ensure OFF */
-        LOG_INF("Buzzer Done");
-    }
-}
-
-
-
-#define BUZZER_FREQ_NS  250000U   /* 4000 Hz = 250µs period */
-
-K_THREAD_DEFINE(buzzer_thread, BUZZER_STACK_SIZE,
-                buzzer_thread_fn, NULL, NULL, NULL,
-                BUZZER_PRIORITY, 0, 0);
 
 /* ------------------------------------------------------------------ *
  * Button
@@ -275,13 +145,13 @@ static struct gpio_callback btn_cb_data;
 void button_handler(const struct device *dev, struct gpio_callback *cb,
                     uint32_t pins)
 {
-    /* Debounce */
-    static uint32_t last_time = 0;
-    uint32_t now = k_uptime_get_32();
-    if (now - last_time < 200) return;
-    last_time = now;
-
-    k_sem_give(&buzzer_sem);  /* wake buzzer thread */
+    static uint8_t demo = 0;
+    switch (demo++ % 4) {
+    case 0: play_sound(success_sound, success_sound_len, NULL); break;
+    case 1: play_sound(alert_sound, alert_sound_len, NULL); break;
+    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, NULL); break;
+    case 3: play_sound(error_sound, error_sound_len, NULL); break;
+    }
 }
 
 /* ------------------------------------------------------------------ *
@@ -396,13 +266,13 @@ int main(void)
         return -ENODEV;
     }
 
-    /* Buzzer */
+    static const struct pwm_dt_spec buzzer =
+        PWM_DT_SPEC_GET(DT_NODELABEL(buzzer));
     if (!device_is_ready(buzzer.dev)) {
         LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
-
-    pwm_set_dt(&buzzer,  buzzer.period, 0);
+    sound_init(&buzzer);
 
 
     
