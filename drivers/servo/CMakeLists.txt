@@ -1,0 +1,1 @@
+add_subdirectory_ifdef(CONFIG_SERVO_GENERIC_PWM generic_pwm)
