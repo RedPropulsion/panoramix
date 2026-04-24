@@ -1,0 +1,79 @@
+description: |
+  Generic PWM-controlled hobby servo motor.
+
+  The servo position is controlled by varying the pulse width of a PWM
+  signal. The pulse width is linearly interpolated between min-pulse
+  (0 degrees) and max-pulse (max-angle milli-degrees).
+
+  Standard hobby servos use a 20 ms period (50 Hz) with a pulse width
+  ranging from 1 ms (0 degrees) to 2 ms (180 degrees). The pulse width
+  values in this binding are expressed in nanoseconds, consistent with
+  Zephyr's PWM API.
+
+  Note: this device has no position feedback wire. get_position() returns
+  the last commanded angle only.
+
+compatible: "generic,pwm-servo"
+
+include: base.yaml
+
+properties:
+  pwms:
+    type: phandle-array
+    required: true
+    description: |
+      PWM channel used to drive the servo control signal.
+
+      The three cells are: <&pwm_controller channel period_ns flags>
+
+        - pwm_controller: phandle to the PWM controller node
+        - channel: PWM channel index on that controller
+        - period_ns: PWM period in nanoseconds (e.g. PWM_MSEC(20) for 50 Hz)
+        - flags: PWM_POLARITY_NORMAL or PWM_POLARITY_INVERTED
+
+      Example:
+        pwms = <&pwm0 0 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+
+  min-pulse:
+    type: int
+    required: true
+    description: |
+      Minimum pulse width in nanoseconds, corresponding to 0 degrees.
+
+      For a standard hobby servo this is typically 1000000 (1 ms).
+      Use the PWM_USEC() or PWM_MSEC() macros in the overlay:
+        min-pulse = <PWM_USEC(1000)>;
+
+  max-pulse:
+    type: int
+    required: true
+    description: |
+      Maximum pulse width in nanoseconds, corresponding to max-angle.
+
+      For a standard hobby servo this is typically 2000000 (2 ms).
+      Use the PWM_USEC() or PWM_MSEC() macros in the overlay:
+        max-pulse = <PWM_USEC(2000)>;
+
+  max-angle:
+    type: int
+    default: 180000
+    description: |
+      Maximum servo travel angle in milli-degrees.
+
+      Default is 180000 (180.000 degrees), which covers the full range
+      of a standard hobby servo. Adjust for servos with a different
+      mechanical range (e.g. 270000 for a 270-degree servo).
+
+examples:
+  - |
+    #include <zephyr/dt-bindings/pwm/pwm.h>
+
+    / {
+        my_servo: servo {
+            compatible = "generic,pwm-servo";
+            pwms = <&pwm0 0 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+            min-pulse = <PWM_USEC(1000)>;
+            max-pulse = <PWM_USEC(2000)>;
+            /* max-angle defaults to 180000 mdeg, omit if correct */
+        };
+    };
