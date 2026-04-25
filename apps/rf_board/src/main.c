@@ -1,35 +1,17 @@
-/*
- * main.c — SchedaRF Board Test
- *
- * Testa le seguenti periferiche definite nel DTS:
- *   - LED GPIO (led_ring + led_rf_1..7)
- *   - Button (user_button su PC13)
- *   - USART3 (console/debug VCP)
- *   - USART1 (comunicazione Asterics MCU)
- *   - USART2 (comunicazione ESP32S3)
- *   - SPI2 + LoRa SX1262 (tramite driver Zephyr lora)
- *
- * Console/Shell: USART3 @ 115200 baud
- */
-
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
 #include <string.h>
 
-LOG_MODULE_REGISTER(rf_board_test, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(lora_link_test, LOG_LEVEL_DBG);
 
 /* -----------------------------------------------------------------------
- * DTS aliases / nodelabels
+ * DTS nodelabels
  * --------------------------------------------------------------------- */
 
-/* LED ring */
-#define LED_RING_NODE   DT_NODELABEL(led_ring)
-/* LED RF individuali */
 #define LED_RF1_NODE    DT_NODELABEL(led_rf_1)
 #define LED_RF2_NODE    DT_NODELABEL(led_rf_2)
 #define LED_RF3_NODE    DT_NODELABEL(led_rf_3)
@@ -37,340 +19,240 @@ LOG_MODULE_REGISTER(rf_board_test, LOG_LEVEL_DBG);
 #define LED_RF5_NODE    DT_NODELABEL(led_rf_5)
 #define LED_RF6_NODE    DT_NODELABEL(led_rf_6)
 #define LED_RF7_NODE    DT_NODELABEL(led_rf_7)
-
-/* Button */
-#define BTN_NODE        DT_NODELABEL(user_button)
-
-/* UART */
-#define UART1_NODE      DT_NODELABEL(usart1)
-#define UART2_NODE      DT_NODELABEL(usart2)
-#define UART3_NODE      DT_NODELABEL(usart3)   /* console */
-
-/* LoRa */
-#define LORA_NODE       DT_NODELABEL(lora_sx1262_asterics)
+#define LORA_NODE       DT_NODELABEL(lora0)
 
 /* -----------------------------------------------------------------------
- * GPIO specs
+ * Periferiche
  * --------------------------------------------------------------------- */
 
+static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
+
 static const struct gpio_dt_spec leds[] = {
-    GPIO_DT_SPEC_GET(LED_RING_NODE, gpios),
-    GPIO_DT_SPEC_GET(LED_RF1_NODE,  gpios),
-    GPIO_DT_SPEC_GET(LED_RF2_NODE,  gpios),
-    GPIO_DT_SPEC_GET(LED_RF3_NODE,  gpios),
-    GPIO_DT_SPEC_GET(LED_RF4_NODE,  gpios),
-    GPIO_DT_SPEC_GET(LED_RF5_NODE,  gpios),
-    GPIO_DT_SPEC_GET(LED_RF6_NODE,  gpios),
-    GPIO_DT_SPEC_GET(LED_RF7_NODE,  gpios),
+    GPIO_DT_SPEC_GET(LED_RF1_NODE, gpios),
+    GPIO_DT_SPEC_GET(LED_RF2_NODE, gpios),
+    GPIO_DT_SPEC_GET(LED_RF3_NODE, gpios),
+    GPIO_DT_SPEC_GET(LED_RF4_NODE, gpios),
+    GPIO_DT_SPEC_GET(LED_RF5_NODE, gpios),
+    GPIO_DT_SPEC_GET(LED_RF6_NODE, gpios),
+    GPIO_DT_SPEC_GET(LED_RF7_NODE, gpios),
 };
 #define NUM_LEDS ARRAY_SIZE(leds)
 
-static const char *led_names[] = {
-    "LED_RING",
-    "LED_RF1", "LED_RF2", "LED_RF3", "LED_RF4",
-    "LED_RF5", "LED_RF6", "LED_RF7",
+/* LED semantici per il test */
+#define LED_TX_IDX   0   /* Lampeggia a ogni trasmissione */
+#define LED_ACK_IDX  1   /* Lampeggia quando si riceve un ACK valido */
+#define LED_ERR_IDX  2   /* Lampeggia in caso di timeout / errore */
+
+/* -----------------------------------------------------------------------
+ * Parametri del link test
+ * --------------------------------------------------------------------- */
+
+#define NUM_PACKETS         100
+#define ACK_TIMEOUT_MS      3000   /* Tempo massimo di attesa per l'ACK */
+#define INTER_PACKET_MS     300    /* Pausa tra un ciclo TX→ACK e il successivo */
+
+/*
+ * Protocollo pacchetto:
+ *
+ *  TX → RX:  4 byte  [0x4C, 0x54, seq_hi, seq_lo]
+ *                     'L'   'T'   MSB       LSB
+ *
+ *  RX → TX:  4 byte  [0x41, 0x43, rssi_hi, rssi_lo]
+ *                     'A'   'C'   MSB        LSB     (RSSI come int16_t big-endian)
+ *
+ * Il nodo ricevente deve essere programmato con la stessa configurazione radio
+ * (SF8, BW250, 868 MHz, CR 4/5) e con il seguente comportamento:
+ *   1. Rimane in ricezione continua (lora_recv con timeout lungo).
+ *   2. All'arrivo di un pacchetto con header 'LT', legge il proprio RSSI,
+ *      costruisce il pacchetto ACK e lo trasmette.
+ */
+
+/* -----------------------------------------------------------------------
+ * Configurazione radio comune
+ * --------------------------------------------------------------------- */
+
+static const struct lora_modem_config lora_cfg_base = {
+    .frequency    = 868000000,
+    .bandwidth    = BW_250_KHZ,
+    .datarate     = SF_8,
+    .preamble_len = 12,
+    .coding_rate  = CR_4_5,
+    .tx_power     = 14,
 };
 
-static const struct gpio_dt_spec btn = GPIO_DT_SPEC_GET(BTN_NODE, gpios);
-
-/* -----------------------------------------------------------------------
- * Button callback
- * --------------------------------------------------------------------- */
-
-static struct gpio_callback btn_cb_data;
-static volatile bool btn_pressed = false;
-
-static void button_pressed_cb(const struct device *dev,
-                               struct gpio_callback *cb,
-                               uint32_t pins)
+static bool lora_set_mode(bool tx)
 {
-    btn_pressed = true;
-    LOG_INF(">>> Button premuto! <<<");
+    struct lora_modem_config cfg = lora_cfg_base;
+    cfg.tx = tx;
+    int ret = lora_config(lora_dev, &cfg);
+    if (ret != 0) {
+        LOG_ERR("lora_config(%s) fallita: %d", tx ? "TX" : "RX", ret);
+        return false;
+    }
+    return true;
 }
 
 /* -----------------------------------------------------------------------
- * Helpers
+ * Utility LED
  * --------------------------------------------------------------------- */
 
-/** Invia una stringa su una UART (polling). */
-static void uart_print(const struct device *dev, const char *msg)
+static void led_blink(int idx, int ms)
 {
-    if (!device_is_ready(dev)) {
-        return;
-    }
-    while (*msg) {
-        uart_poll_out(dev, *msg++);
+    if (idx < NUM_LEDS && gpio_is_ready_dt(&leds[idx])) {
+        gpio_pin_set_dt(&leds[idx], 1);
+        k_msleep(ms);
+        gpio_pin_set_dt(&leds[idx], 0);
     }
 }
 
 /* -----------------------------------------------------------------------
- * Test: LED
- * Accende ogni LED per 200 ms in sequenza, poi li spegne tutti.
- * --------------------------------------------------------------------- */
-
-static void test_leds(void)
-{
-    LOG_INF("=== TEST LED ===");
-
-    /* Inizializzazione */
-    for (int i = 0; i < NUM_LEDS; i++) {
-        if (!gpio_is_ready_dt(&leds[i])) {
-            LOG_ERR("  LED %s: GPIO non pronto", led_names[i]);
-            continue;
-        }
-        if (gpio_pin_configure_dt(&leds[i], GPIO_OUTPUT_INACTIVE) < 0) {
-            LOG_ERR("  LED %s: configurazione fallita", led_names[i]);
-        }
-    }
-
-    /* Sequenza lampeggio */
-    for (int i = 0; i < NUM_LEDS; i++) {
-        LOG_INF("  Accendo %s", led_names[i]);
-        gpio_pin_set_dt(&leds[i], 1);
-        k_msleep(200);
-        gpio_pin_set_dt(&leds[i], 0);
-    }
-
-    /* Knight-rider veloce */
-    LOG_INF("  Knight-rider...");
-    for (int rep = 0; rep < 3; rep++) {
-        for (int i = 0; i < NUM_LEDS; i++) {
-            gpio_pin_set_dt(&leds[i], 1);
-            k_msleep(60);
-            gpio_pin_set_dt(&leds[i], 0);
-        }
-        for (int i = NUM_LEDS - 1; i >= 0; i--) {
-            gpio_pin_set_dt(&leds[i], 1);
-            k_msleep(60);
-            gpio_pin_set_dt(&leds[i], 0);
-        }
-    }
-
-    /* Tutti ON -> tutti OFF */
-    for (int i = 0; i < NUM_LEDS; i++) {
-        gpio_pin_set_dt(&leds[i], 1);
-    }
-    k_msleep(500);
-    for (int i = 0; i < NUM_LEDS; i++) {
-        gpio_pin_set_dt(&leds[i], 0);
-    }
-
-    LOG_INF("  Test LED completato.");
-}
-
-/* -----------------------------------------------------------------------
- * Test: Button
- * Attende la pressione del tasto per max 10 s.
- * --------------------------------------------------------------------- */
-
-static void test_button(void)
-{
-    LOG_INF("=== TEST BUTTON ===");
-
-    if (!gpio_is_ready_dt(&btn)) {
-        LOG_ERR("  Button GPIO non pronto");
-        return;
-    }
-
-    if (gpio_pin_configure_dt(&btn, GPIO_INPUT) < 0) {
-        LOG_ERR("  Configurazione button fallita");
-        return;
-    }
-
-    if (gpio_pin_interrupt_configure_dt(&btn, GPIO_INT_EDGE_TO_ACTIVE) < 0) {
-        LOG_ERR("  Configurazione interrupt button fallita");
-        return;
-    }
-
-    gpio_init_callback(&btn_cb_data, button_pressed_cb, BIT(btn.pin));
-    gpio_add_callback(btn.port, &btn_cb_data);
-
-    LOG_INF("  Premi il bottone entro 10 secondi...");
-    btn_pressed = false;
-
-    int timeout_ms = 10000;
-    while (!btn_pressed && timeout_ms > 0) {
-        k_msleep(100);
-        timeout_ms -= 100;
-    }
-
-    if (btn_pressed) {
-        LOG_INF("  Button OK — pressione rilevata.");
-        /* Feedback visivo sul LED ring */
-        for (int i = 0; i < 3; i++) {
-            gpio_pin_set_dt(&leds[0], 1);
-            k_msleep(100);
-            gpio_pin_set_dt(&leds[0], 0);
-            k_msleep(100);
-        }
-    } else {
-        LOG_WRN("  Timeout: nessuna pressione rilevata.");
-    }
-
-    gpio_remove_callback(btn.port, &btn_cb_data);
-}
-
-/* -----------------------------------------------------------------------
- * Test: UART
- * USART1 (Asterics) e USART2 (ESP32) inviano un messaggio di test.
- * USART3 è già usato come console.
- * --------------------------------------------------------------------- */
-
-static void test_uart(void)
-{
-    LOG_INF("=== TEST UART ===");
-
-    const struct device *uart1 = DEVICE_DT_GET(UART1_NODE);
-    const struct device *uart2 = DEVICE_DT_GET(UART2_NODE);
-    const struct device *uart3 = DEVICE_DT_GET(UART3_NODE);
-
-    /* USART1 */
-    if (device_is_ready(uart1)) {
-        const char *msg1 = "\r\n[USART1] SchedaRF -> Asterics MCU: TEST OK\r\n";
-        uart_print(uart1, msg1);
-        LOG_INF("  USART1 (Asterics): messaggio inviato");
-    } else {
-        LOG_ERR("  USART1 non pronto");
-    }
-
-    /* USART2 */
-    if (device_is_ready(uart2)) {
-        const char *msg2 = "\r\n[USART2] SchedaRF -> ESP32S3: TEST OK\r\n";
-        uart_print(uart2, msg2);
-        LOG_INF("  USART2 (ESP32S3): messaggio inviato");
-    } else {
-        LOG_ERR("  USART2 non pronto");
-    }
-
-    /* USART3 (console) */
-    if (device_is_ready(uart3)) {
-        uart_print(uart3, "\r\n[USART3] Console VCP: TEST OK\r\n");
-        LOG_INF("  USART3 (console VCP): OK");
-    } else {
-        LOG_ERR("  USART3 non pronto");
-    }
-}
-
-/* -----------------------------------------------------------------------
- * Test: LoRa SX1262
- * Configura il radio, invia un pacchetto di prova e tenta una ricezione
- * di 5 secondi.
- * --------------------------------------------------------------------- */
-
-static void test_lora(void)
-{
-    LOG_INF("=== TEST LORA SX1262 ===");
-
-    const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
-
-    if (!device_is_ready(lora_dev)) {
-        LOG_ERR("  Dispositivo LoRa non pronto");
-        return;
-    }
-
-    /* Configurazione radio */
-    struct lora_modem_config cfg = {
-        .frequency      = 868100000,   /* 868.1 MHz — banda EU868 */
-        .bandwidth      = BW_125_KHZ,
-        .datarate       = SF_7,
-        .preamble_len   = 8,
-        .coding_rate    = CR_4_5,
-        .tx_power       = 14,          /* dBm */
-        .tx             = true,
-    };
-
-    if (lora_config(lora_dev, &cfg) < 0) {
-        LOG_ERR("  Configurazione LoRa fallita");
-        return;
-    }
-    LOG_INF("  LoRa configurato: 868.1 MHz, SF7, BW125, CR4/5, 14 dBm");
-
-    /* TX */
-    const char tx_payload[] = "SchedaRF_TEST";
-    int ret = lora_send(lora_dev,
-                        (uint8_t *)tx_payload,
-                        strlen(tx_payload));
-    if (ret < 0) {
-        LOG_ERR("  lora_send fallito: %d", ret);
-    } else {
-        LOG_INF("  TX OK — payload: \"%s\" (%d byte)", tx_payload,
-                strlen(tx_payload));
-        /* Feedback LED */
-        for (int i = 0; i < 2; i++) {
-            for (int j = 0; j < NUM_LEDS; j++) {
-                gpio_pin_set_dt(&leds[j], 1);
-            }
-            k_msleep(150);
-            for (int j = 0; j < NUM_LEDS; j++) {
-                gpio_pin_set_dt(&leds[j], 0);
-            }
-            k_msleep(150);
-        }
-    }
-
-    /* RX (modalità non-bloccante con timeout 5 s) */
-    cfg.tx = false;
-    if (lora_config(lora_dev, &cfg) < 0) {
-        LOG_ERR("  Configurazione RX LoRa fallita");
-        return;
-    }
-
-    uint8_t rx_buf[64] = {0};
-    int16_t rssi;
-    int8_t  snr;
-
-    LOG_INF("  In ascolto per 5 s...");
-    ret = lora_recv(lora_dev, rx_buf, sizeof(rx_buf) - 1,
-                    K_SECONDS(5), &rssi, &snr);
-    if (ret > 0) {
-        rx_buf[ret] = '\0';
-        LOG_INF("  RX OK — %d byte: \"%s\" | RSSI=%d dBm | SNR=%d dB",
-                ret, rx_buf, rssi, snr);
-    } else if (ret == 0 || ret == -EAGAIN) {
-        LOG_WRN("  Timeout RX: nessun pacchetto ricevuto (normale in test standalone)");
-    } else {
-        LOG_ERR("  lora_recv errore: %d", ret);
-    }
-}
-
-/* -----------------------------------------------------------------------
- * main
+ * Main
  * --------------------------------------------------------------------- */
 
 int main(void)
 {
-    LOG_INF("╔══════════════════════════════════════╗");
-    LOG_INF("║   SchedaRF — Board Bring-Up Test     ║");
-    LOG_INF("║   STM32L412RB @ 80 MHz               ║");
-    LOG_INF("╚══════════════════════════════════════╝");
+    /* Inizializzazione LED */
+    for (int i = 0; i < NUM_LEDS; i++) {
+        if (gpio_is_ready_dt(&leds[i])) {
+            gpio_pin_configure_dt(&leds[i], GPIO_OUTPUT_INACTIVE);
+        }
+    }
 
-    k_msleep(200); /* attendi stabilizzazione clock */
+    /* Verifica che il modem LoRa sia pronto */
+    if (!device_is_ready(lora_dev)) {
+        LOG_ERR("Modem LoRa non pronto – abort");
+        return -1;
+    }
 
-    /* 1. LED */
-    test_leds();
+    /* -----------------------------------------------------------------------
+     * Strutture dati per il test
+     * --------------------------------------------------------------------- */
+
+    int16_t rssi_log[NUM_PACKETS];  /* RSSI remoto per ogni pacchetto riuscito */
+    bool    pkt_ok[NUM_PACKETS];    /* true = ACK ricevuto e valido             */
+    memset(rssi_log, 0, sizeof(rssi_log));
+    memset(pkt_ok,   0, sizeof(pkt_ok));
+
+    int     success_count = 0;
+    int32_t rssi_sum      = 0;
+
+    /* -----------------------------------------------------------------------
+     * Inizio link test
+     * --------------------------------------------------------------------- */
+
+    LOG_INF("╔══════════════════════════════════════════════╗");
+    LOG_INF("║      LoRa Link Test – %3d pacchetti          ║", NUM_PACKETS);
+    LOG_INF("║  SF8 | BW 250 kHz | 14 dBm | 868 MHz        ║");
+    LOG_INF("║  ACK timeout: %4d ms | inter-pkt: %3d ms   ║", ACK_TIMEOUT_MS, INTER_PACKET_MS);
+    LOG_INF("╚══════════════════════════════════════════════╝");
+
+    for (int i = 0; i < NUM_PACKETS; i++) {
+
+        /* --- Costruzione payload TX --- */
+        uint8_t tx_buf[4];
+        tx_buf[0] = 'L';
+        tx_buf[1] = 'T';
+        tx_buf[2] = (uint8_t)((i >> 8) & 0xFF);
+        tx_buf[3] = (uint8_t)(i & 0xFF);
+
+        /* --- Trasmissione --- */
+        if (!lora_set_mode(true)) {
+            LOG_ERR("[%3d/%d] Impossibile entrare in TX mode", i + 1, NUM_PACKETS);
+            k_msleep(INTER_PACKET_MS);
+            continue;
+        }
+
+        led_blink(LED_TX_IDX, 50);
+
+        int ret = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
+        if (ret < 0) {
+            LOG_WRN("[%3d/%d] FAIL | TX error (%d)", i + 1, NUM_PACKETS, ret);
+            led_blink(LED_ERR_IDX, 100);
+            k_msleep(INTER_PACKET_MS);
+            continue;
+        }
+
+        /* --- Attesa ACK --- */
+        if (!lora_set_mode(false)) {
+            LOG_ERR("[%3d/%d] Impossibile entrare in RX mode", i + 1, NUM_PACKETS);
+            k_msleep(INTER_PACKET_MS);
+            continue;
+        }
+
+        uint8_t rx_buf[8];
+        int16_t rx_rssi_local;
+        int8_t  rx_snr;
+        int     len = lora_recv(lora_dev, rx_buf, sizeof(rx_buf),
+                                K_MSEC(ACK_TIMEOUT_MS), &rx_rssi_local, &rx_snr);
+
+        /* --- Validazione ACK --- */
+        if (len == 4 && rx_buf[0] == 'A' && rx_buf[1] == 'C') {
+            int16_t remote_rssi = (int16_t)(((uint16_t)rx_buf[2] << 8) | rx_buf[3]);
+            rssi_log[i]    = remote_rssi;
+            pkt_ok[i]      = true;
+            success_count++;
+            rssi_sum      += remote_rssi;
+
+            led_blink(LED_ACK_IDX, 80);
+            LOG_INF("[%3d/%d] OK   | RSSI remoto: %4d dBm  (locale: %4d dBm, SNR: %d dB)",
+                    i + 1, NUM_PACKETS, remote_rssi, rx_rssi_local, rx_snr);
+        } else if (len == 0 || len == -EAGAIN) {
+            LOG_WRN("[%3d/%d] FAIL | Timeout ACK (%d ms)", i + 1, NUM_PACKETS, ACK_TIMEOUT_MS);
+            led_blink(LED_ERR_IDX, 100);
+        } else {
+            LOG_WRN("[%3d/%d] FAIL | ACK malformato (len=%d)", i + 1, NUM_PACKETS, len);
+            led_blink(LED_ERR_IDX, 100);
+        }
+
+        k_msleep(INTER_PACKET_MS);
+    }
+
+    /* -----------------------------------------------------------------------
+     * Riepilogo finale
+     * --------------------------------------------------------------------- */
+
+    int fail_count   = NUM_PACKETS - success_count;
+    /* PER in centesimi di punto percentuale per evitare float */
+    int per_int      = (fail_count * 10000) / NUM_PACKETS;   /* es. 1250 = 12.50% */
+    int per_whole    = per_int / 100;
+    int per_frac     = per_int % 100;
+    int avg_rssi     = (success_count > 0) ? (int)(rssi_sum / success_count) : 0;
+
+    /* Pausa per svuotare completamente il buffer di log prima del riepilogo */
     k_msleep(500);
 
-    /* 2. Button */
-    test_button();
-    k_msleep(200);
+    LOG_INF(" ");
+    LOG_INF("╔══════════════════════════════════════════════╗");
+    LOG_INF("║             RIEPILOGO LINK TEST              ║");
+    LOG_INF("╠══════════════════════════════════════════════╣");
+    LOG_INF("║  Pacchetti trasmessi : %3d                   ║", NUM_PACKETS);
+    LOG_INF("║  ACK ricevuti        : %3d                   ║", success_count);
+    LOG_INF("║  Pacchetti persi     : %3d                   ║", fail_count);
+    LOG_INF("║  Packet Error Rate   : %2d.%02d %%               ║", per_whole, per_frac);
+    if (success_count > 0) {
+        LOG_INF("║  RSSI medio (remoto) : %4d dBm              ║", avg_rssi);
+    } else {
+        LOG_INF("║  RSSI medio (remoto) : N/A                   ║");
+    }
+    LOG_INF("╠══════════════════════════════════════════════╣");
+    LOG_INF("║  Dettaglio per pacchetto:                    ║");
 
-    /* 3. UART */
-    test_uart();
-    k_msleep(200);
+    /* Delay tra ogni riga per non saturare il buffer del logger Zephyr */
+    for (int i = 0; i < NUM_PACKETS; i++) {
+        if (pkt_ok[i]) {
+            LOG_INF("║  PKT %3d : OK   | RSSI %4d dBm             ║",
+                    i + 1, rssi_log[i]);
+        } else {
+            LOG_INF("║  PKT %3d : FAIL                              ║", i + 1);
+        }
+        k_msleep(20);
+    }
 
-    /* 4. LoRa */
-    test_lora();
+    LOG_INF("╚══════════════════════════════════════════════╝");
 
-    /* ---- Fine test ---- */
-    LOG_INF("=== TEST COMPLETATO ===");
-    LOG_INF("Tutti i test eseguiti. Loop LED indicatore di vita...");
-
-    /* LED ring batte ogni secondo per indicare che il firmware è vivo */
+    /* Loop vuoto: il test è terminato */
     while (1) {
-        gpio_pin_set_dt(&leds[0], 1);
-        k_msleep(100);
-        gpio_pin_set_dt(&leds[0], 0);
-        k_msleep(900);
+        k_msleep(5000);
     }
 
     return 0;

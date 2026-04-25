@@ -1,0 +1,102 @@
+
+west flash
+-- west flash: rebuilding
+ninja: no work to do.
+-- west flash: using runner openocd
+-- runners.openocd: Flashing file: F:/Zephyr-workspace/panoramix/apps/rf_board/build/zephyr/zephyr.hex
+Open On-Chip Debugger 0.12.0-g91bd278 (2026-03-13-06:22)
+Licensed under GNU GPL v2
+For bug reports, read
+        http://openocd.org/doc/doxygen/bugs.html
+hla_swd
+adapter speed: 1000 kHz
+
+Info : The selected transport took over low-level target control. The results might differ compared to plain JTAG/SWD
+srst_only separate srst_nogate srst_open_drain connect_deassert_srst
+
+0x8000
+Info : clock speed 500 kHz
+Info : STLINK V3J16M9 (API v3) VID:PID 0483:3754
+Info : Target voltage: 3.168128
+Info : [stm32l4x.cpu] Cortex-M4 r0p1 processor detected
+Info : [stm32l4x.cpu] target has 6 breakpoints, 4 watchpoints
+Info : starting gdb server for stm32l4x.cpu on 3333
+Info : Listening on port 3333 for gdb connections
+    TargetName         Type       Endian TapName            State
+--  ------------------ ---------- ------ ------------------ ------------
+ 0* stm32l4x.cpu       hla_target little stm32l4x.cpu       running
+
+Info : Unable to match requested speed 500 kHz, using 200 kHz
+Info : Unable to match requested speed 500 kHz, using 200 kHz
+[stm32l4x.cpu] halted due to debug-request, current mode: Thread 
+xPSR: 0x01000000 pc: 0x0800151c msp: 0x20008000
+Info : Unable to match requested speed 4000 kHz, using 3300 kHz
+Info : Unable to match requested speed 4000 kHz, using 3300 kHz
+Info : device idcode = 0x10006464 (STM32L41/L42xx - Rev A : 0x1000)
+Info : RDP level 0 (0xAA)
+Info : flash size = 128 KiB
+Info : flash mode : single-bank
+Info : Padding image section 0 at 0x080000e4 with 28 bytes
+Info : Padding image section 1 at 0x0800c4dc with 4 bytes
+Info : Padding image section 2 at 0x0800d9ac with 4 bytes
+Info : Padding image section 3 at 0x0800da04 with 4 bytes (bank write end alignment)
+Warn : Adding extra erase range, 0x0800da08 .. 0x0800dfff
+auto erase enabled
+wrote 55816 bytes from file F:/Zephyr-workspace/panoramix/apps/rf_board/build/zephyr/zephyr.hex in 1.763964s (30.901 KiB/s)
+Info : Unable to match requested speed 500 kHz, using 200 kHz
+Info : Unable to match requested speed 500 kHz, using 200 kHz
+shutdown command invoked
+
+  AES   …\apps\rf_board   23:17  rf_board  ✘!? 
+
+west flash
+-- west flash: rebuilding
+ninja: no work to do.
+-- west flash: using runner openocd
+-- runners.openocd: Flashing file: F:/Zephyr-workspace/panoramix/apps/rf_board/build/zephyr/zephyr.hex
+Open On-Chip Debugger 0.12.0-g91bd278 (2026-03-13-06:22)
+Licensed under GNU GPL v2
+For bug reports, read
+        http://openocd.org/doc/doxygen/bugs.html
+hla_swd
+adapter speed: 1000 kHz
+
+Info : The selected transport took over low-level target control. The results might differ compared to plain JTAG/SWD
+srst_only separate srst_nogate srst_open_drain connect_deassert_srst
+
+0x8000
+Info : clock speed 500 kHz
+Info : STLINK V3J16M9 (API v3) VID:PID 0483:3754
+Info : Target voltage: 0.000000
+Error: target voltage may be too low for reliable debugging
+Error: init mode failed (unable to connect to the target)
+
+
+FATAL ERROR: command exited with status 1: F:/Zephyr-SDK/zephyr-sdk-1.0.0/hosttools/openocd/bin/openocd.exe -s F:/Zephyr-SDK/zephyr-sdk-1.0.0/hosttools/openocd/share/openocd/scripts -c 'source [find interface/stlink.cfg]' -c 'transport select hla_swd' -c 'adapter speed 1000' -c 'source [find target/stm32l4x.cfg]' -c 'reset_config srst_only srst_nogate' -c 'set WORKAREASIZE 0x8000' -c 'gdb_report_data_abort enable' '-c init' '-c targets' -c 'reset init' -c 'flash write_image erase F:/Zephyr-workspace/panoramix/apps/rf_board/build/zephyr/zephyr.hex' -c 'reset run' -c shutdown
+
+  AES   …\apps\rf_board   23:18  rf_board  ✘!? 
+
+west flash
+-- west flash: rebuilding
+ninja: no work to do.
+-- west flash: using runner openocd
+-- runners.openocd: Flashing file: F:/Zephyr-workspace/panoramix/apps/rf_board/build/zephyr/zephyr.hex
+Open On-Chip Debugger 0.12.0-g91bd278 (2026-03-13-06:22)
+Licensed under GNU GPL v2
+For bug reports, read
+        http://openocd.org/doc/doxygen/bugs.html
+hla_swd
+adapter speed: 1000 kHz
+
+Info : The selected transport took over low-level target control. The results might differ compared to plain JTAG/SWD      
+srst_only separate srst_nogate srst_open_drain connect_deassert_srst
+
+0x8000
+Info : clock speed 500 kHz
+Info : STLINK V3J16M9 (API v3) VID:PID 0483:3754
+Info : Target voltage: 0.000000
+Error: target voltage may be too low for reliable debugging
+Error: init mode failed (unable to connect to the target)
+
+
+FATAL ERROR: command exited with status 1: F:/Zephyr-SDK/zephyr-sdk-1.0.0/hosttools/openocd/bin/openocd.exe -s F:/Zephyr-SDK/zephyr-sdk-1.0.0/hosttools/openocd/share/openocd/scripts -c 'source [find interface/stlink.cfg]' -c 'transport select hla_swd' -c 'adapter speed 1000' -c 'source [find target/stm32l4x.cfg]' -c 'reset_config srst_only srst_nogate' -c 'set WORKAREASIZE 0x8000' -c 'gdb_report_data_abort enable' '-c init' '-c targets' -c 'reset init' -c 'flash write_image erase F:/Zephyr-workspace/panoramix/apps/rf_board/build/zephyr/zephyr.hex' -c 'reset run' -c shutdown
