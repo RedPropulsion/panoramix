@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "windows-gcc-x64",
+            "browse": {},
+            "compileCommands": [
+                "${workspaceFolder}\\apps\\rf_board\\build\\compile_commands.json"
+            ]
+        }
+    ],
+    "version": 4
+}

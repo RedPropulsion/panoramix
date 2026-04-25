@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
-set(BOARD asterics)
+list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+set(BOARD rf_board)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 

@@ -55,6 +55,10 @@
                 gpios = <&gpioc 8 GPIO_ACTIVE_HIGH>;
                 label = "LED RF 7";
         };
+        gps_reset: gps_reset {
+            gpios = <&gpioc 6 GPIO_ACTIVE_LOW>;
+            label = "GPS_RESET";
+        };
     };
 
 
@@ -88,11 +92,11 @@
 };
 
 
-// TODO: Configurazione clock
 
-&clk_hse {
+
+&clk_hse {      // fottuto sulla scheda attuale
     clock-frequency = <DT_FREQ_M(48)>;
-    status = "okay";
+    status = "disabled";
 };
 
 &clk_lse {
@@ -100,11 +104,13 @@
     driving-capability = <2>;
 };
 
+&clk_hsi { status = "okay"; };
+
 &pll {
     status = "okay";
-    clocks = <&clk_hse>;
+    clocks = <&clk_hsi>;
 
-    div-m = <3>;
+    div-m = <1>;
     mul-n = <10>;
     div-r = <2>;
 };
@@ -124,47 +130,43 @@
 
 // Configurazione periferiche
 
-&i2c1 { // GPS Ublox M10S (senza batteria di backup)
-    status = "disabled";
 
+&i2c1 {
+    status = "okay";
     pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
     pinctrl-names = "default";
+    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz */
 
-    //clocks = <>;
-
-    //DMA: connected both tx and rx
-
-    //TODO: impelement i2c driver for ublox
+    gps_m10: gps_m10@42 {
+        compatible = "i2c-device"; /* Usiamo il device I2C generico */
+        reg = <0x42>;              /* Indirizzo di default u-blox */
+        status = "okay";
+    };
 };
 
 
 &spi2 { // Radio LoRa SX1262
-	status = "okay";
 
+    status = "okay";
     pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
     pinctrl-names = "default";
+
+    cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; // chip select
 
     //clocks = <>, <>;//TODO: set clock configuration
 
     //DMA: connected both tx and rx
 
+// Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
 
-
-    cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>;
-
-    lora_sx1262_asterics: SX1262@0 {
-        // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
+    lora0: SX1262@0 {
         compatible = "semtech,sx1262";
         reg = <0>;
 
-        spi-max-frequency = <2000000>; //FIXME
-        
-        label = "SX1262";
+        spi-max-frequency = <2000000>; // può essere aumentato almeno a 8MHz
 
         reset-gpios = <&gpioa 5 GPIO_ACTIVE_LOW>;
-        
         busy-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
-        
         dio1-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>; //generic interrupt line from lora to mcu
 
         regulator-ldo;
@@ -178,7 +180,7 @@
 
 &usart1 { // Seriale per comunicazione con asterics MCU
     //TODO: implement
-    status = "okay";
+    status = "disabled";
 
     pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
     pinctrl-names = "default";
@@ -193,7 +195,7 @@
 
 &usart2 { // Seriale per comunicazione ESP32S3
     //TODO: implement
-    status = "okay";
+    status = "disabled";
     //PA2 tx
     //PA3 rx
     pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
