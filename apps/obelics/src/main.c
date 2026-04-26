@@ -155,7 +155,7 @@ void button_handler(const struct device *dev, struct gpio_callback *cb,
 }
 
 /* ------------------------------------------------------------------ *
- * LED blink timers (unchanged)
+ * LED blink timers
  * ------------------------------------------------------------------ */
 struct led_data {
     struct gpio_dt_spec gpio;
