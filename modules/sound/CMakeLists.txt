@@ -1,0 +1,3 @@
+zephyr_library()
+zephyr_library_sources_ifdef(CONFIG_LIB_SOUND sound.c)
+zephyr_include_directories()

@@ -1,3 +1,3 @@
-config SOUND
+config LIB_SOUND
     bool "Sound module"
     default y

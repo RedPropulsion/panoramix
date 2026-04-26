@@ -6,6 +6,7 @@ set(BOARD_DEBUG_RUNNER openocd)
 
 list(APPEND ZEPHYR_EXTRA_MODULES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/sound
 )
 
 list(APPEND DTS_ROOT
@@ -15,13 +16,13 @@ list(APPEND DTS_ROOT
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(ObelICS)
+
 target_sources(app PRIVATE
     src/main.c
     src/sd_card.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/lib/sound/sound.c
 )
 
 target_include_directories(app PRIVATE
     src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/lib/sound
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/sound
 )
