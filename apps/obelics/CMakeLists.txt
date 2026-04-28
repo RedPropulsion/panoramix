@@ -20,6 +20,7 @@ project(ObelICS)
 target_sources(app PRIVATE
     src/main.c
     src/sd_card.c
+    src/udp_client.c
 )
 
 target_include_directories(app PRIVATE

@@ -3,13 +3,14 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
+
 #include <zephyr/fs/fs.h>
-// #include <ff.h>
 #include <zephyr/storage/disk_access.h>
+#include <zephyr/drivers/led_strip.h>
 #include "sound.h"
+#include "udp_client.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -227,6 +228,9 @@ int main(void)
      LOG_INF("Starting main()");
     int ret;
 
+    
+    udp_client_init();
+
     /* Initialize LoRa device */
     if (!device_is_ready(lora_dev)) {
         LOG_ERR("LoRa device not ready");
@@ -250,11 +254,12 @@ int main(void)
     }
 
     /* Mount SD card */
-    LOG_INF("Initializing SD card");
-    #ifdef CONFIG_FAT_FILESYSTEM_ELM
-    LOG_INF("Mounting SD card...");
-    fatfs_mount();
-    #endif
+    
+    // LOG_INF("Initializing SD card");
+    // #ifdef CONFIG_FAT_FILESYSTEM_ELM
+    // LOG_INF("Mounting SD card...");
+    // fatfs_mount();
+    // #endif
     
 
     /* Neopixel enable */
