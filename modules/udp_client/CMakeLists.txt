@@ -1,0 +1,3 @@
+zephyr_library()
+zephyr_library_sources_ifdef(CONFIG_UDP_CLIENT udp_client.c)
+zephyr_include_directories()

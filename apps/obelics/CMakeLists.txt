@@ -7,6 +7,7 @@ set(BOARD_DEBUG_RUNNER openocd)
 list(APPEND ZEPHYR_EXTRA_MODULES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
     ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/sound
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/udp_client
 )
 
 list(APPEND DTS_ROOT
@@ -19,11 +20,10 @@ project(ObelICS)
 
 target_sources(app PRIVATE
     src/main.c
-    src/sd_card.c
-    src/udp_client.c
 )
 
 target_include_directories(app PRIVATE
     src
     ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/sound
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/udp_client
 )
