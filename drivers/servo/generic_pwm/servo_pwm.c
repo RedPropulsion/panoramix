@@ -36,7 +36,7 @@ static int servo_pwm_set_position(const struct device *dev,
 
   ret = pwm_set_pulse_dt(&cfg->pwm, pulse_ns);
   if (ret < 0) {
-    LOG_ERR("Failed to set PWM pulse: %d", ret);
+    LOG_ERR("Failed to set PWM pulse: %s", strerror(-ret));
     return ret;
   }
 
