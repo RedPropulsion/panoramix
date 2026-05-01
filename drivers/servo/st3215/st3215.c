@@ -38,7 +38,7 @@ static uint8_t st3215_calc_checksum(uint8_t *packet, uint8_t total_length) {
 }
 
 /**
- * @brief Sends the raw angle command to the ST3215 servo. This function constructs the command packet according to the servo's protocol, sends it over UART, and handles the necessary GPIO pin for switching between TX and RX modes.
+ * @brief Sends the raw angle command to the ST3215 servo. This function constructs the command packet according to the servo's protocol and sends it over UART
  * @param dev Pointer to the ST3215 device.
  * @param angle Desired angle in the servo's 12-bit scale (0-4095)
  */
@@ -137,8 +137,8 @@ int st3215_get_angle_raw(const struct device *dev, uint16_t *angle) {
         return -EIO;
     }
     if (response[2] != ST3215_ID_DEFAULT) {
-    LOG_ERR("Errore: Risposta da ID inatteso (Ricevuto: %d)", response[2]);
-    return -EIO;
+        LOG_ERR("Errore: Risposta da ID inatteso (Ricevuto: %d)", response[2]);
+        return -EIO;
     }
     if (response[4] != 0) { // see doc page 3 for the meaning of the status byte
         LOG_WRN("Response Error! Status Byte: 0x%02X", response[4]);
