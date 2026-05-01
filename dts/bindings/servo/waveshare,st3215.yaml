@@ -1,0 +1,7 @@
+description: Waveshare ST3215 serial bus servo motor
+
+compatible: "waveshare,st3215"
+
+include: base.yaml
+
+properties:

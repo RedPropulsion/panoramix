@@ -1,4 +1,5 @@
 
 menu "Drivers"
 rsource "sensor/Kconfig"
+rsource "servo/Kconfig"
 endmenu

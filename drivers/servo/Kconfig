@@ -1,0 +1,22 @@
+menuconfig SERVO
+	bool "Servo Controller drivers"
+	help
+	  Enable servo controller drivers.
+
+if SERVO
+
+module = SERVO
+module-str = servo
+source "subsys/logging/Kconfig.template.log_config"
+
+config SERVO_INIT_PRIORITY
+	int "Servo driver init priority"
+	default 90
+	help
+	  Servo driver initialization priority. Must be higher than UART
+	  (which defaults to 50).
+
+rsource "generic_pwm/Kconfig"
+rsource "st3215/Kconfig"
+
+endif # SERVO
