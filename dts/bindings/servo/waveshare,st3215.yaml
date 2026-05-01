@@ -5,7 +5,3 @@ compatible: "waveshare,st3215"
 include: base.yaml
 
 properties:
-  gpios:
-    type: phandle-array
-    required: true
-    description: GPIO pin to control TX/RX direction (Enable pin)

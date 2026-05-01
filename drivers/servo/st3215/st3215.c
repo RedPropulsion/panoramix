@@ -3,6 +3,7 @@
 #define ST3215_ID_DEFAULT      0x01
 #define ST3215_REG_GOAL_POS    0x2A
 #define ST3215_REG_PRESENT_POS 0x38
+#define ST3215_INST_WRITE      0x03
 #define ST3215_INST_READ       0x02
 #define ST3215_INST_PING       0x01
 
@@ -16,7 +17,6 @@ LOG_MODULE_REGISTER(st3215_servo, LOG_LEVEL_DBG);
 
 struct st3215_config {
     const struct device *uart_dev;
-    struct gpio_dt_spec enable_pin;
 };
 
 struct st3215_data {
@@ -52,24 +52,21 @@ int st3215_send_angle_raw(const struct device *dev, uint16_t angle) {
 
     packet[0] = ST3215_HEADER;
     packet[1] = ST3215_HEADER;
-    packet[2] = ST3215_ID_DEFAULT;   
+    packet[2] = ST3215_ID_DEFAULT;
     packet[3] = 0x05;   // remaining packet length (5 bytes: Instruction + Address + Data Length + 2 bytes of angle + Checksum)
+    packet[4] = ST3215_INST_WRITE;
     packet[5] = ST3215_REG_GOAL_POS;
     packet[6] = angle_low;
     packet[7] = angle_high;
     packet[8] = st3215_calc_checksum(packet, 9);
 
     LOG_INF("Sending angle command: %d (Checksum: 0x%02X)", angle, packet[8]);
-
-    gpio_pin_set_dt(&config->enable_pin, 1); // TX Mode to send data
-
+   
     for (int i = 0; i < 9; i++) {
         uart_poll_out(config->uart_dev, packet[i]); // writes byte by byte to the UART
     }
 
     k_usleep(100);
-    gpio_pin_set_dt(&config->enable_pin, 0); // back to RX mode after sending
-
     return 0;
 }
 
@@ -89,6 +86,12 @@ int st3215_get_angle_raw(const struct device *dev, uint16_t *angle) {
     const struct st3215_config *config = dev->config;
     uint8_t request[8];
     uint8_t response[8];
+    unsigned char temp;
+
+    // a "flush" of the UART receive buffer to eventually discard old data
+    while (uart_poll_in(config->uart_dev, &temp) == 0) {
+        // just receives the byte and does nothing
+    }
     
     // preparing the read packet to request the current angle from the servo
     request[0] = ST3215_HEADER;
@@ -100,15 +103,12 @@ int st3215_get_angle_raw(const struct device *dev, uint16_t *angle) {
     request[6] = 0x02; // we want to read 2 bytes (the angle is 16-bit) starting from the position specified in request[5]
     request[7] = st3215_calc_checksum(request, 8);
 
-    gpio_pin_set_dt(&config->enable_pin, 1); // TX Mode to send data
     for (int i = 0; i < 8; i++) {
         uart_poll_out(config->uart_dev, request[i]);
     }
     
     // sleep to make sure the data is sent before switching to receive mode
     k_usleep(50); 
-
-    gpio_pin_set_dt(&config->enable_pin, 0); // RX Mode to receive data
 
     // handle servo's answer and eventual timeout
     int bytes_received = 0;
@@ -177,17 +177,6 @@ static int st3215_init(const struct device *dev) {
         return -ENODEV;
     }
 
-    if (!gpio_is_ready_dt(&config->enable_pin)) {
-        LOG_ERR("GPIO enable pin not ready");
-        return -ENODEV;
-    }
-
-    int ret = gpio_pin_configure_dt(&config->enable_pin, GPIO_OUTPUT_INACTIVE);
-    if (ret < 0) {
-        LOG_ERR("Failed to configure direction control GPIO");
-        return ret;
-    }
-
     LOG_INF("ST3215 Driver initialized on %s", config->uart_dev->name);
     return 0;
 }
@@ -202,7 +191,6 @@ static DEVICE_API(servo, st3215_api) = {
                                                                    \
     static const struct st3215_config st3215_config_##inst = {     \
         .uart_dev = DEVICE_DT_GET(DT_INST_BUS(inst)),              \
-        .enable_pin = GPIO_DT_SPEC_INST_GET(inst, gpios),          \
     };                                                             \
                                                                    \
     DEVICE_DT_INST_DEFINE(inst,                                    \
