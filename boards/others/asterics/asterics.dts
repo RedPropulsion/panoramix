@@ -202,6 +202,11 @@
 };
 
 &pll {
+    /* 
+     * Configurazione del registro PLL1 per SYSCLK a 550 MHz.
+     * Formula HW: SYSCLK = (HSE / div-m) * mul-n / div-p
+     * Calcolo: (48 MHz / 3) * 34 / 1 = 550 MHz 
+     */
     div-m = <3>;
     mul-n = <34>;
     div-p = <1>;

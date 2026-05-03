@@ -238,7 +238,7 @@
 
 &rcc {
     clocks = <&pll>;
-    clock-frequency = <DT_FREQ_M(550)>; /* CPU Core Clock */
+    clock-frequency = <DT_FREQ_M(480)>; /* CPU Core Clock */
     d1cpre = <1>;   // sets the CPU clock, same as systick
     hpre = <2>;     // 275MHz to AXI, HCLK3, AHB1, AHB2, AHB4
     d1ppre = <2>;   //137.5MHz to APB3 peripheral clocks
