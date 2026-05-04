@@ -202,6 +202,11 @@
 };
 
 &pll {
+    /* 
+     * Configurazione del registro PLL1 per SYSCLK a 550 MHz.
+     * Formula HW: SYSCLK = (HSE / div-m) * mul-n / div-p
+     * Calcolo: (48 MHz / 3) * 34 / 1 = 550 MHz 
+     */
     div-m = <3>;
     mul-n = <34>;
     div-p = <1>;
@@ -238,7 +243,7 @@
 
 &rcc {
     clocks = <&pll>;
-    clock-frequency = <DT_FREQ_M(480)>; /* CPU Core Clock */
+    clock-frequency = <DT_FREQ_M(550)>; /* CPU Core Clock */
     d1cpre = <1>;   // sets the CPU clock, same as systick
     hpre = <2>;     // 275MHz to AXI, HCLK3, AHB1, AHB2, AHB4
     d1ppre = <2>;   //137.5MHz to APB3 peripheral clocks
@@ -452,59 +457,57 @@
 
 &spi2 {
     status = "okay";
-
+    
     pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pc2_c &spi2_mosi_pc1>;
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB1, 14)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+             <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
 
     cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
-                <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+               <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //gyro
+               <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //accel
+               <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;     //icm
 
-    ms5611_A: ms5611@0 {
+    ms5611_a: ms5611@0 {
         status = "okay";
-
         compatible = "ams,ms5611";
         reg = <0>;
-        spi-max-frequency = <1000000>;
+        spi-max-frequency = <8000000>;
+
     };
 
-    bmi088_gyro_A: bmi08x-gyro@1 {
+    bmi088_gyro_a: bmi08x-gyro@1 {
         status = "okay";
-
         compatible = "bosch,bmi08x-gyro";
         reg = <1>;
-        spi-max-frequency = <1000000>;
+        spi-max-frequency = <8000000>;
 
         gyro-hz = "400_47";
         gyro-fs = <2000>;
-
-        friendly-name="bmi088-gyro-A";
+        friendly-name="bmi088-gyro-a";
     };
 
-    bmi088_accel_A: bmi08x-accel@2 {
+    bmi088_accel_a: bmi08x-accel@2 {
         status = "okay";
         compatible = "bosch,bmi08x-accel";
         reg = <2>;
-        spi-max-frequency = <1000000>;
+        spi-max-frequency = <8000000>;
+
 
         accel-hz = "1600";
         accel-fs = <16>;
-
-        //data-sync = <&bmi088_gyro_A> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
-        friendly-name="bmi088-accel-A";
+        friendly-name="bmi088-accel-a";
     };
 
-    icm42688p_A: icm42688p@3 {
+    icm42688p_a: icm42688p@3 {
         status = "okay";
         compatible = "invensense,icm42688", "invensense,icm4268x";
         reg = <3>;
-        spi-max-frequency = <1000000>;
-        friendly-name = "icm42688-p-A";
+        spi-max-frequency = <8000000>;
 
+        
+        friendly-name = "icm42688-p-a";
         int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
 
         /* Accel Config */
@@ -533,14 +536,14 @@
                 <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //acc
                 <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
 
-    ms5611_B: ms5611@0 {
+    ms5611_b: ms5611@0 {
         status = "okay";
         compatible = "ams,ms5611";
         reg = <0>;
         spi-max-frequency = <1000000>;
     };
 
-    bmi088_gyro_B: bmi08x-gyro@1 {
+    bmi088_gyro_b: bmi08x-gyro@1 {
         status = "okay";
 
         compatible = "bosch,bmi08x-gyro";
@@ -553,7 +556,7 @@
         friendly-name="bmi088-gyro-B";
     };
 
-    bmi088_accel_B: bmi08x-accel@2 {
+    bmi088_accel_b: bmi08x-accel@2 {
         status = "okay";
         compatible = "bosch,bmi08x-accel";
         reg = <2>;
@@ -566,7 +569,7 @@
         friendly-name="bmi088-accel-B";
     };
 
-    icm42688p_B: icm42688p@3 {
+    icm42688p_b: icm42688p@3 {
         status = "okay";
         compatible = "invensense,icm42688", "invensense,icm4268x";
         reg = <3>;
@@ -603,7 +606,7 @@
 
     bmp585_sens: bmp585@0 {
         //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
-        status = "disabled";    //FIXME: the driver doesn't work in SPI mode yet
+        status = "okay";    //FIXME: the driver doesn't work in SPI mode yet
         compatible = "bosch,bmp581";
         reg = <0>;
         spi-max-frequency = <1000000>;
@@ -742,7 +745,7 @@
 
     mcu_bmp585: mcu_bmp585@4 {
         //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
-        status = "disabled";    //FIXME: the driver doesn't work in SPI mode yet
+        status = "okay";    //FIXME: the driver doesn't work in SPI mode yet
         compatible = "bosch,bmp581";
         reg = <4>;
         spi-max-frequency = <1000000>;

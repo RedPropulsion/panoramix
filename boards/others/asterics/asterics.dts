@@ -457,311 +457,170 @@
 
 &spi2 {
     status = "okay";
-
     pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pc2_c &spi2_mosi_pc1>;
     pinctrl-names = "default";
+    clocks = <&rcc STM32_CLOCK(APB1, 14)>, <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+    
+    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    clocks = <&rcc STM32_CLOCK(APB1, 14)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
-
-    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
-                <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
-
-    ms5611_A: ms5611@0 {
-        status = "okay";
-
-        compatible = "ams,ms5611";
+    ms5611_a: sensor@0 {
+        compatible = "vnd,spi-device";
         reg = <0>;
-        spi-max-frequency = <1000000>;
+        spi-max-frequency = <8000000>;
+        status = "okay";
     };
 
-    bmi088_gyro_A: bmi08x-gyro@1 {
-        status = "okay";
-
-        compatible = "bosch,bmi08x-gyro";
+    bmi088_gyro_a: sensor@1 {
+        compatible = "vnd,spi-device";
         reg = <1>;
-        spi-max-frequency = <1000000>;
-
-        gyro-hz = "400_47";
-        gyro-fs = <2000>;
-
-        friendly-name="bmi088-gyro-A";
+        spi-max-frequency = <8000000>;
+        status = "okay";
     };
 
-    bmi088_accel_A: bmi08x-accel@2 {
-        status = "okay";
-        compatible = "bosch,bmi08x-accel";
+    bmi088_accel_a: sensor@2 {
+        compatible = "vnd,spi-device";
         reg = <2>;
-        spi-max-frequency = <1000000>;
-
-        accel-hz = "1600";
-        accel-fs = <16>;
-
-        //data-sync = <&bmi088_gyro_A> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
-        friendly-name="bmi088-accel-A";
+        spi-max-frequency = <8000000>;
+        status = "okay";
     };
 
-    icm42688p_A: icm42688p@3 {
-        status = "okay";
-        compatible = "invensense,icm42688", "invensense,icm4268x";
+    icm42688p_a: sensor@3 {
+        compatible = "vnd,spi-device";
         reg = <3>;
-        spi-max-frequency = <1000000>;
-        friendly-name = "icm42688-p-A";
-
-        int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-
-        /* Accel Config */
-        accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
-        accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
-        accel-fs = <ICM42688_DT_ACCEL_FS_8>;
-
-        /* Gyro */
-        gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
-        gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
-        gyro-fs = <ICM42688_DT_GYRO_FS_1000>;
+        spi-max-frequency = <8000000>;
+        status = "okay";
     };
 };
 
 &spi3 {
     status = "okay";
-
     pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pb2>;
     pinctrl-names = "default";
+    clocks = <&rcc STM32_CLOCK(APB1, 15)>, <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+    
+    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    clocks = <&rcc STM32_CLOCK(APB1, 15)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
-
-    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //acc
-                <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
-
-    ms5611_B: ms5611@0 {
-        status = "okay";
-        compatible = "ams,ms5611";
+    ms5611_b: sensor@0 {
+        compatible = "vnd,spi-device";
         reg = <0>;
         spi-max-frequency = <1000000>;
+        status = "okay";
     };
 
-    bmi088_gyro_B: bmi08x-gyro@1 {
-        status = "okay";
-
-        compatible = "bosch,bmi08x-gyro";
+    bmi088_gyro_b: sensor@1 {
+        compatible = "vnd,spi-device";
         reg = <1>;
         spi-max-frequency = <1000000>;
-
-        gyro-hz = "400_47";
-        gyro-fs = <2000>;
-
-        friendly-name="bmi088-gyro-B";
+        status = "okay";
     };
 
-    bmi088_accel_B: bmi08x-accel@2 {
-        status = "okay";
-        compatible = "bosch,bmi08x-accel";
+    bmi088_accel_b: sensor@2 {
+        compatible = "vnd,spi-device";
         reg = <2>;
         spi-max-frequency = <1000000>;
-
-        accel-hz = "1600";
-        accel-fs = <16>;
-
-        //data-sync = <&bmi088_gyro_B> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
-        friendly-name="bmi088-accel-B";
+        status = "okay";
     };
 
-    icm42688p_B: icm42688p@3 {
-        status = "okay";
-        compatible = "invensense,icm42688", "invensense,icm4268x";
+    icm42688p_b: sensor@3 {
+        compatible = "vnd,spi-device";
         reg = <3>;
         spi-max-frequency = <1000000>;
-        friendly-name = "icm42688-p-B";
-
-        int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-
-        /* Accel Config */
-        accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
-        accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
-        accel-fs = <ICM42688_DT_ACCEL_FS_8>;
-
-        /* Gyro */
-        gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
-        gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
-        gyro-fs = <ICM42688_DT_GYRO_FS_1000>;
+        status = "okay";
     };
 };
 
 &spi4 {
     status = "okay";
-
     pinctrl-0 = <&spi4_sck_pe2 &spi4_miso_pe5 &spi4_mosi_pe6>;
     pinctrl-names = "default";
+    clocks = <&rcc STM32_CLOCK(APB2, 13)>, <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
+    
+    cs-gpios = <&gpiog 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    clocks = <&rcc STM32_CLOCK(APB2, 13)>,
-            <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
-
-    cs-gpios = <&gpiog 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     // BMP585
-                <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //H3LIS331D
-                <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //LIS2MDL
-                <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //HSCDRRN001BDSA3
-
-    bmp585_sens: bmp585@0 {
-        //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
-        status = "disabled";    //FIXME: the driver doesn't work in SPI mode yet
-        compatible = "bosch,bmp581";
+    bmp585_sens: sensor@0 {
+        compatible = "vnd,spi-device";
         reg = <0>;
         spi-max-frequency = <1000000>;
-        friendly-name = "bmp585_sens";
+        status = "okay";
     };
 
-    // H3LIS331DLTR: accelerometro high-g ±100/200/400g (AUX_SENS U7)
-    // CS → SPI4 index 1 (&gpiog 8, CS_H3LIS33)
-    // INT1/INT2 su U10 EXT_CONNECTORS pin 4 e 3 → TODO se necessario
-    h3lis331dl_sens: h3lis331dl@1 {
-        compatible = "st,h3lis331dl";
+    h3lis331dl_sens: sensor@1 {
+        compatible = "vnd,spi-device";
         reg = <1>;
         spi-max-frequency = <1000000>;
         status = "okay";
-
-        // ODR e range di default → da ajustare a runtime o tramite DT
-        // odr: 50 Hz (opzioni Zephyr: 0=off, 1=0.5, 2=1, 3=2, 4=5, 5=10, 6=50, 7=100, 8=400, 9=1000 Hz)
-        // range: 100g (opzioni: 100, 200, 400)
-        // Nota: il driver h3lis331dl in Zephyr non espone tutte le proprietà DT;
-        // la configurazione ODR/range può richiedere chiamate API a runtime.
     };
 
-    lis2mdl_sens: lis2mdl@2 {
-        status = "okay";
-        compatible = "st,lis2mdl";
+    lis2mdl_sens: sensor@2 {
+        compatible = "vnd,spi-device";
         reg = <2>;
         spi-max-frequency = <1000000>;
-        friendly-name = "lis2mdl_sens";
+        status = "okay";
     };
 
-    // HSCDRRN001BDSA3: pressione differenziale Honeywell HSC (AUX_SENS U4)
-    // Decodifica part number:
-    //   D   = Differenziale
-    //   RR  = porta standard
-    //   N   = senza porta (media isolated)
-    //   001 = 1 inH2O full scale = 249.089 Pa
-    //   B   = Transfer function B (10%-90% di 2^14 counts)
-    //   D   = SPI (SCX/SDX/SDO/CSB)
-    //   SA3 = alimentazione 3.3V
-    // CS → SPI4 index 3 (&gpiog 6, CS_HSC_DIFF)
-    // SPI max clock: 800 kHz (datasheet HSC)
-    hsc_diff: hsc@3 {
-        compatible = "honeywell,hsc";
+    hsc_diff: sensor@3 {
+        compatible = "vnd,spi-device";
         reg = <3>;
         spi-max-frequency = <800000>;
         status = "okay";
-
-        honeywell,transfer-function = "b";   // 10-90% FSS output
-        honeywell,pmin-pascal = <(-249)>;    // pressione minima: -1 inH2O
-        honeywell,pmax-pascal = <249>;       // pressione massima: +1 inH2O
     };
 };
 
 &spi5 {
     status = "okay";
-
     pinctrl-0 = <&spi5_sck_pf7 &spi5_miso_pf8 &spi5_mosi_pf11>;
     pinctrl-names = "default";
+    clocks = <&rcc STM32_CLOCK(APB2, 20)>, <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
+    
+    cs-gpios = <&gpiod 11 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpioa 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpioc 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpioc 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    /* * Sintassi: <&rcc MACRO_BUS_CLOCK BIT_MASK>,
-     * <&rcc MACRO_SOURCE_CLOCK SELECTION_VAL>
-     */
-    clocks = <&rcc STM32_CLOCK(APB2, 20)>,
-            <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
-
-    cs-gpios = <&gpiod 11 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //ms56
-                <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //gyro
-                <&gpioa 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //accel
-                <&gpioc 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>, //icm
-                <&gpioc 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>; //bmp
-
-    mcu_ms5611: ms5611@0 {
-        status = "okay";
-
-        compatible = "ams,ms5611";
+    mcu_ms5611: sensor@0 {
+        compatible = "vnd,spi-device";
         reg = <0>;
         spi-max-frequency = <1000000>;
+        status = "okay";
     };
 
-    mcu_bmi088_gyro: bmi08x-gyro@1 {
-        status = "okay";
-
-        compatible = "bosch,bmi08x-gyro";
+    mcu_bmi088_gyro: sensor@1 {
+        compatible = "vnd,spi-device";
         reg = <1>;
         spi-max-frequency = <1000000>;
-
-        gyro-hz = "400_47";
-        gyro-fs = <2000>;
-
-        friendly-name="bmi088-gyro-mcu";
+        status = "okay";
     };
 
-    mcu_bmi088_accel: bmi08x-accel@2 {
-        status = "okay";
-        compatible = "bosch,bmi08x-accel";
+    mcu_bmi088_accel: sensor@2 {
+        compatible = "vnd,spi-device";
         reg = <2>;
         spi-max-frequency = <1000000>;
-
-        accel-hz = "1600";
-        accel-fs = <16>;
-
-        //data-sync = <&mcu_bmi088_gyro> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
-        friendly-name="bmi088-accel-mcu";
+        status = "okay";
     };
 
-    mcu_icm42688p: mcu_icm42688p@3 {
-        status = "okay";
-        compatible = "invensense,icm42688", "invensense,icm4268x";
+    mcu_icm42688p: sensor@3 {
+        compatible = "vnd,spi-device";
         reg = <3>;
         spi-max-frequency = <1000000>;
-        friendly-name = "icm42688-p-mcu";
-
-        int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-
-        /* Accel Config */
-        accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
-        accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
-        accel-fs = <ICM42688_DT_ACCEL_FS_8>;
-
-        /* Gyro */
-        gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
-        gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
-        gyro-fs = <ICM42688_DT_GYRO_FS_1000>;
-
-
-        /* Correzione assi */
-        /* axis-align-x = <SENSOR_AXIS_ALIGN_DT_Y>;
-        axis-align-x-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
-
-        axis-align-y = <SENSOR_AXIS_ALIGN_DT_X>;
-        axis-align-y-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
-
-        axis-align-z = <SENSOR_AXIS_ALIGN_DT_Z>;
-        axis-align-z-sign = <SENSOR_AXIS_ALIGN_DT_NEG>; */
+        status = "okay";
     };
 
-    mcu_bmp585: mcu_bmp585@4 {
-        //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
-        status = "disabled";    //FIXME: the driver doesn't work in SPI mode yet
-        compatible = "bosch,bmp581";
+    mcu_bmp585: sensor@4 {
+        compatible = "vnd,spi-device";
         reg = <4>;
         spi-max-frequency = <1000000>;
-        friendly-name = "bmp585-mcu";
-
-        odr = <BMP581_DT_ODR_50_HZ>;
-        press-osr = <BMP581_DT_OVERSAMPLING_4X>;
-        temp-osr = <BMP581_DT_OVERSAMPLING_4X>;
-        power-mode = <BMP581_DT_MODE_NORMAL>;
-        press-iir = <0>;
-        temp-iir = <0>;
-
+        status = "okay";
     };
-
 };
 
 &sram4 {
