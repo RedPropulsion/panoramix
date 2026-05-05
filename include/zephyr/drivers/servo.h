@@ -1,3 +1,6 @@
+#ifndef PANORAMIX_SERVO_API_H
+#define PANORAMIX_SERVO_API_H
+
 #include <zephyr/device.h>
 
 typedef int (*servo_set_position_t)(const struct device *dev,
@@ -21,3 +24,5 @@ static inline int servo_get_position(const struct device *dev,
   const struct servo_driver_api *api = dev->api;
   return api->get_position(dev, angle_mdeg);
 }
+
+#endif // PANORAMXI_SERVO_API_H
