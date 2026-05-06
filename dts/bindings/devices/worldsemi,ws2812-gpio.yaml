@@ -1,0 +1,43 @@
+description:
+  Bit-Banging driver for WS2812
+compatible:
+  "ws2812-gpio"
+properties:
+  gpios:
+    type: phandle-array
+    required: true
+    description: pin used to send data
+
+  chain-length:
+    type: int
+    required: true
+
+  color-mapping:
+    type: array
+    required: true
+    description: LED colors mapped in the correct order
+
+  delay-t1h:
+    type: int
+    required: true
+    description: Number of NOP assembly operations to create a delay for a 1 bit, high voltage period (default value 700ns)
+
+  delay-t1l:
+    type: int
+    required: true
+    description: Number of NOP assembly operations to create a delay for a 1 bit, low voltage period (default value 600ns)
+
+  delay-t0h:
+    type: int
+    required: true
+    description: Number of NOP assembly operations to create a delay for a 0 bit, high voltage period (default value 350ns)
+
+  delay-t0l:
+    type: int
+    required: true
+    description: Number of NOP assembly operations to create a delay for a 0 bit, low voltage period (default value 800ns)
+
+  reset-delay:
+    type: int
+    required: true
+    description: Number of NOP assembly operations to create a delay to reset the communication with the LEDs (default value 8000ns)

@@ -5,6 +5,12 @@
 #include <zephyr/dt-bindings/sensor/icm42688.h> // To use sensor macros
 #include <zephyr/dt-bindings/sensor/bmp581.h>
 
+#include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/memory-attr/memory-attr-arm.h>
+#include <zephyr/dt-bindings/dma/stm32_dma.h>
+
+
 / {
     model = "AsterICS";
     compatible = "asterics";
@@ -14,6 +20,7 @@
         zephyr,shell-uart = &usart1;
         zephyr,sram = &sram0;
         zephyr,flash = &flash0;
+        zephyr,led-strip = &led_strip;
     };
 
     leds {
@@ -47,6 +54,133 @@
             label = "LED MCU 7";
         };
     };
+
+    neopixel_enable: neopixel-enable {
+        compatible = "gpio-keys";
+        neopixel_en: neopixel_en {
+            gpios = <&gpiof 6 GPIO_ACTIVE_HIGH>;
+            label = "neopxel mcu enable";
+        };
+    };
+
+    /* led_strip_1: ws2812_1 {
+        compatible = "worldsemi,ws2812-gpio";
+
+        chain-length = <24>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                        LED_COLOR_ID_RED
+                        LED_COLOR_ID_BLUE>;
+        gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+
+    //parametri di default per WS2812. Se necessario, modificarli
+        delay-t1h = <700>;
+        delay-t1l = <600>;
+        delay-t0h = <350>;
+        delay-t0l = <800>;
+        reset-delay = <8000>;
+
+        // sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
+    };
+
+    led_strip: ws2812_2 {
+        compatible = "worldsemi,ws2812-uart";
+
+        chain-length = <12>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                        LED_COLOR_ID_RED
+                        LED_COLOR_ID_BLUE>;
+        gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
+
+        delay-t1h = <700>;
+        delay-t1l = <600>;
+        delay-t0h = <350>;
+        delay-t0l = <800>;
+        reset-delay = <8000>;
+
+    }; */
+
+    pwm_devices {
+        buzzer_pwm: buzzer_pwm {
+            compatible = "pwm";
+            pwms = <&pwm14 0 250000 PWM_POLARITY_NORMAL>;
+        };
+
+        servo_drogue_pwm: servo_drogue_pwm {
+            compatible = "pwm";
+            // canale 1, 20ms period (50Hz)
+            pwms = <&pwm3 0 20000000 PWM_POLARITY_NORMAL>;
+        };
+
+        servo_main_pwm: servo_main_pwm {
+            compatible = "pwm";
+            // canale 3, 20ms period (50Hz)
+            pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>;
+        };
+    };
+
+    regulators {
+        /* Primo alimentatore: es. per i sensori ambientali */
+        sensor_board_vdd: regulator_sensor_board_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "sensor_board_vdd_3v3";
+            enable-gpios = <&gpiof 12 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
+
+            startup-delay-us = <1000>; /* Tempo di assestamento prima che sia pronto */
+
+            regulator-boot-on;
+        };
+
+        neopixel_ring_vdd: regulator_neopixel_ring_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "neopixel_ring_5v";
+            enable-gpios = <&gpiof 5 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
+
+            startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
+
+            //regulator-boot-on;
+            regulator-boot-off;
+        };
+
+        pyro_vdd: regulator_pyro_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "pyro_6v";
+            enable-gpios = <&gpiof 5 GPIO_ACTIVE_HIGH>; /* Pin che accende l'alimentatore */
+
+            startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
+
+            //regulator-boot-on;
+            regulator-boot-off;
+        };
+
+        servo_vdd: regulator_servo_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "servo_6v";
+            enable-gpios = <&gpiof 10 GPIO_ACTIVE_HIGH>;
+
+            startup-delay-us = <200>;
+
+            regulator-boot-off;
+        };
+
+        runcam_vdd: regulator_runcam_vdd {
+            compatible = "regulator-fixed";
+            regulator-name = "runcam_pwr";
+            enable-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+
+            startup-delay-us = <2000>;
+
+            regulator-boot-off;
+        };
+
+        //Telemetry regulator (not available)
+
+        //mcu regulator (not available)
+
+    };
+};
+
+&pwr {
+    power-supply = "ldo";
 };
 
 &sram0 {
@@ -123,6 +257,142 @@
     status = "okay";
 };
 
+&i2c2 {
+    status = "okay";
+
+    pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
+    pinctrl-names = "default";
+
+    //TODO: clocks = <&rcc STM32_CLOCK(APB1, 22)>;
+
+    //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/microchip%2Cmcp9600.html#dtbinding-microchip-mcp9600
+    //TODO: parametri
+    mcp9600: mcp9600@40 {
+        compatible = "microchip,mcp9600";
+        reg = <0x40>;
+    };
+
+    mcp9600_2: mcp9600@4f {
+        compatible = "microchip,mcp9600";
+        reg = <0x4f>;
+    };
+};
+
+&i2c4 {
+    status = "okay";
+
+    pinctrl-0 = <&i2c4_scl_pd12 &i2c4_sda_pd13>;
+    pinctrl-names = "default";
+
+    //TODO: clocks = <&rcc STM32_CLOCK(APB4,
+
+    // I2C4 ha a disposizione il BDMA, che può raggiungere locazioni di RAM solo nel dominio SRAM4
+    // Vedi Table 2 dell'RM0468
+
+    // i2c4_rx
+    dmas = <&dmamux2 0 13 (STM32_DMA_PERIPH_RX | STM32_DMA_PERIPH_NO_INC | STM32_DMA_PERIPH_8BITS | STM32_DMA_OFFSET_LINKED_BUS | STM32_DMA_PRIORITY_MEDIUM)>;
+    // i2c4_tx
+    dmas = <&dmamux2 1 14 (STM32_DMA_PERIPH_TX | STM32_DMA_PERIPH_NO_INC | STM32_DMA_PERIPH_8BITS | STM32_DMA_OFFSET_LINKED_BUS | STM32_DMA_PRIORITY_MEDIUM)>;
+
+    //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
+    ina219_mcu: ina219@41 {
+        compatible = "ti,ina219";
+        reg = <0x41>;
+
+        //required
+        lsb-microamp = <50>;    //consente di avere una dinamica di 1.6A
+        shunt-milliohm = <27>;
+
+        //optional
+        brng = <1>;     //BUS Voltage: 0: 16V, 1: 32V
+        pg = <0>;       //±40 mV, ho un leggero overflow nel caso di consumo di alta corrente, ma non dovrebbe accadere mai
+        badc = <9>;     //  Bus  //  ADC Resolution and sample averaging. TODO: change this depending on sampling frequency
+        sadc = <9>;     // Shunt //  "" ""  ""  ""
+        friendly-name = "ina219-mcu";
+    };
+
+    ina219_rf: ina219@42 {
+        compatible = "ti,ina219";
+        reg = <0x42>;
+
+        //required
+        lsb-microamp = <50>;    //consente di avere una dinamica di 1.6A
+        shunt-milliohm = <27>;
+
+        //optional
+        brng = <1>;
+        pg = <0>;       //±40 mV
+        badc = <9>;
+        sadc = <9>;
+        friendly-name = "ina219-rf";
+    };
+
+    ina219_servo: ina219@43 {
+        compatible = "ti,ina219";
+        reg = <0x43>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <27>;
+
+        //optional
+        brng = <1>;
+        pg = <1>;       //±80 mV
+        badc = <9>;
+        sadc = <9>;
+        friendly-name = "ina219-servo";
+        };
+
+    ina219_ring: ina219@44 {
+        compatible = "ti,ina219";
+        reg = <0x44>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <27>;
+
+        //optional
+        brng = <1>;
+        pg = <1>;       //±80 mV
+        badc = <9>;
+        sadc = <9>;
+        friendly-name = "ina219-ring";
+    };
+
+    ina219_sensor: ina219@45 {
+        compatible = "ti,ina219";
+        reg = <0x45>;
+
+        //required
+        lsb-microamp = <30>;
+        shunt-milliohm = <27>;
+
+        //optional
+        brng = <1>;
+        pg = <0>;       //±40 mV
+        badc = <9>;
+        sadc = <9>;
+        friendly-name = "ina219-sensor";
+    };
+
+    ina219_camera: ina219@46 {
+        compatible = "ti,ina219";
+        reg = <0x46>;
+
+        //required
+        lsb-microamp = <100>;
+        shunt-milliohm = <27>;
+
+        //optional
+        brng = <1>;
+        pg = <1>;
+        badc = <9>;
+        sadc = <9>;
+        friendly-name = "ina219-camera";
+    };
+
+};
+
 &spi1 {
     status = "okay";
 
@@ -153,7 +423,7 @@
             Memory Type:  0x20 (SPI)
            Capacity:     0x1a (512Mbit) */
         jedec-id = [C2 20 1a];  //check for different data size and memory type
-    
+
         /* Partizionamento (Opzionale ma raccomandato) */
         partitions {
             compatible = "fixed-partitions";
@@ -167,6 +437,179 @@
         };
 
     };
+};
+
+&spi2 {
+    status = "okay";
+
+    pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pc2_c &spi2_mosi_pc1>;
+    pinctrl-names = "default";
+
+    clocks = <&rcc STM32_CLOCK(APB1, 14)>,
+            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+
+    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
+                <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
+                <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
+                <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+
+    ms5611_A: ms5611@0 {
+        status = "okay";
+
+        compatible = "ams,ms5611";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+    };
+
+    bmi088_gyro_A: bmi08x-gyro@1 {
+        status = "okay";
+
+        compatible = "bosch,bmi08x-gyro";
+        reg = <1>;
+        spi-max-frequency = <1000000>;
+
+        gyro-hz = "400_47";
+        gyro-fs = <2000>;
+
+        friendly-name="bmi088-gyro-A";
+    };
+
+    bmi088_accel_A: bmi08x-accel@2 {
+        status = "okay";
+        compatible = "bosch,bmi08x-accel";
+        reg = <2>;
+        spi-max-frequency = <1000000>;
+
+        accel-hz = "1600";
+        accel-fs = <16>;
+
+        //data-sync = <&bmi088_gyro_A> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
+        friendly-name="bmi088-accel-A";
+    };
+
+    icm42688p_A: icm42688p@3 {
+        status = "okay";
+        compatible = "invensense,icm42688", "invensense,icm4268x";
+        reg = <3>;
+        spi-max-frequency = <1000000>;
+        friendly-name = "icm42688-p-A";
+
+        int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
+
+        /* Accel Config */
+        accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
+        accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
+        accel-fs = <ICM42688_DT_ACCEL_FS_8>;
+
+        /* Gyro */
+        gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
+        gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
+        gyro-fs = <ICM42688_DT_GYRO_FS_1000>;
+    };
+};
+
+&spi3 {
+    status = "okay";
+
+    pinctrl-0 = <&spi3_sck_pc10 &spi3_miso_pc11 &spi3_mosi_pb2>;
+    pinctrl-names = "default";
+
+    clocks = <&rcc STM32_CLOCK(APB1, 15)>,
+            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+
+    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
+                <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
+                <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //acc
+                <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+
+    ms5611_B: ms5611@0 {
+        status = "okay";
+        compatible = "ams,ms5611";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+    };
+
+    bmi088_gyro_B: bmi08x-gyro@1 {
+        status = "okay";
+
+        compatible = "bosch,bmi08x-gyro";
+        reg = <1>;
+        spi-max-frequency = <1000000>;
+
+        gyro-hz = "400_47";
+        gyro-fs = <2000>;
+
+        friendly-name="bmi088-gyro-B";
+    };
+
+    bmi088_accel_B: bmi08x-accel@2 {
+        status = "okay";
+        compatible = "bosch,bmi08x-accel";
+        reg = <2>;
+        spi-max-frequency = <1000000>;
+
+        accel-hz = "1600";
+        accel-fs = <16>;
+
+        //data-sync = <&bmi088_gyro_B> //TODO: è necessario collegare un jumper fisicamente sulla scheda, controllare!
+        friendly-name="bmi088-accel-B";
+    };
+
+    icm42688p_B: icm42688p@3 {
+        status = "okay";
+        compatible = "invensense,icm42688", "invensense,icm4268x";
+        reg = <3>;
+        spi-max-frequency = <1000000>;
+        friendly-name = "icm42688-p-B";
+
+        int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
+
+        /* Accel Config */
+        accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
+        accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
+        accel-fs = <ICM42688_DT_ACCEL_FS_8>;
+
+        /* Gyro */
+        gyro-pwr-mode = <ICM42688_DT_GYRO_LN>;
+        gyro-odr = <ICM42688_DT_GYRO_ODR_1000>;
+        gyro-fs = <ICM42688_DT_GYRO_FS_1000>;
+    };
+};
+
+&spi4 {
+    status = "okay";
+
+    pinctrl-0 = <&spi4_sck_pe2 &spi4_miso_pe5 &spi4_mosi_pe6>;
+    pinctrl-names = "default";
+
+    clocks = <&rcc STM32_CLOCK(APB2, 13)>,
+            <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
+
+    cs-gpios = <&gpiog 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     // BMP585
+                <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //H3LIS331D
+                <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //LIS2MDL
+                <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //HSCDRRN001BDSA3
+
+    bmp585_sens: bmp585@0 {
+        //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
+        status = "disabled";    //FIXME: the driver doesn't work in SPI mode yet
+        compatible = "bosch,bmp581";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        friendly-name = "bmp585_sens";
+    };
+
+    //TODO: add h3lis331d driver and device tree node (@1)
+
+    lis2mdl_sens: lis2mdl@2 {
+        status = "okay";
+        compatible = "st,lis2mdl";
+        reg = <2>;
+        spi-max-frequency = <1000000>;
+        friendly-name = "lis2mdl_sens";
+    };
+
+    //TODO: add HSCDRRN001BDSA3 driver and device tree node (@3)
 };
 
 &spi5 {
@@ -229,7 +672,7 @@
         friendly-name = "icm42688-p-mcu";
 
         int-gpios = <&gpioa 15 GPIO_ACTIVE_HIGH>;
-        
+
         /* Accel Config */
         accel-pwr-mode = <ICM42688_DT_ACCEL_LN>;
         accel-odr = <ICM42688_DT_ACCEL_ODR_1000>;
@@ -244,10 +687,10 @@
         /* Correzione assi */
         /* axis-align-x = <SENSOR_AXIS_ALIGN_DT_Y>;
         axis-align-x-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
-        
+
         axis-align-y = <SENSOR_AXIS_ALIGN_DT_X>;
         axis-align-y-sign = <SENSOR_AXIS_ALIGN_DT_NEG>;
-        
+
         axis-align-z = <SENSOR_AXIS_ALIGN_DT_Z>;
         axis-align-z-sign = <SENSOR_AXIS_ALIGN_DT_NEG>; */
     };
@@ -271,6 +714,66 @@
 
 };
 
+&sram4 {
+    zephyr,memory-attr = <( DT_MEM_ARM(ATTR_MPU_RAM_NOCACHE) )>;
+};
+
+&sdmmc2 {
+    // DMA NON disponibile per questa periferica
+    status = "okay";
+    pinctrl-0 = <&sdmmc2_ck_pd6 &sdmmc2_cmd_pd7
+                &sdmmc2_d0_pg9 &sdmmc2_d1_pg10
+                &sdmmc2_d2_pg11 &sdmmc2_d3_pg12>;
+    pinctrl-names = "default";
+
+    cd-gpios = <&gpioa 10 GPIO_ACTIVE_LOW>;
+
+    bus-width =<4>;
+
+    clk-div = <2>; //the output bus frequency is FREQ_BUS = SDMMMC_CLK / [CLKDIV + 2]
+
+    clocks = <&rcc STM32_CLOCK(AHB2, 9)>,
+            <&rcc STM32_SRC_PLL2_R SDMMC_SEL(1)>; //SDMMMC_CLK = 64MHz
+
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    disk-name = "SDCard";
+
+};
+
+&fdcan1 {
+    status = "disabled";
+
+    pinctrl-0 = <&fdcan1_rx_pd0 &fdcan1_tx_pd1>;
+    pinctrl-names = "default";
+
+    clk-divider = <4>;
+
+};
+
+&timers3 {
+    status = "okay";
+
+    pwm3: pwm {
+        status = "okay";
+
+        pinctrl-0 = <&tim3_ch1_pc6 &tim3_ch3_pc8>;
+        pinctrl-names = "default";
+    };
+};
+
+&timers14 {
+    status = "okay";
+
+    pwm14: pwm {
+        status = "okay";
+
+        pinctrl-0 = <&tim14_ch1_pf9>;
+        pinctrl-names = "default";
+    };
+};
+
 &usart1 {
     status = "okay";
 
@@ -279,19 +782,96 @@
     current-speed = <115200>;
 };
 
+&usart3 {
+    status = "okay";
+
+    pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+};
+
+&uart4 {
+    status = "okay";
+    pinctrl-0 = <&uart4_tx_pb9 &uart4_rx_pb8>;
+    pinctrl-names = "default";
+
+
+    current-speed = <2400000>; /* 2.5 MHz baudrate */
+       /* Frame constraint: (1 start + 7 data + 1 stop) = 9 bits total. */
+    data-bits = <7>;
+    /* tx-invert is required to create an idle-low signal. */
+    tx-invert;
+
+    dmas = <&dmamux1 0 64 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>;
+    dma-names = "tx";
+
+    /* /* clocks = <&rcc STM32_CLOCK(APB1, 16)>,                 /* 1. Clock del bus (Accensione periferica) */
+            // <&rcc STM32_SRC_PLL3_Q USART2345678_SEL(2)>;   /* 2. Clock di dominio (Baud rate a 64MHz) */ */ */
+
+    led_strip: ws2812-strip {
+        compatible = "worldsemi,ws2812-uart";
+        status = "okay";
+        chain-length = <12>;
+
+        bits-per-symbol = <3>;
+
+        one-symbol = <6>;   /* 0b110 */
+        zero-symbol = <4>;  /* 0b100 */
+        reset-delay = <50>;
+
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+    };
+};
+
+&dmamux1 {
+    status = "okay";
+};
+
+&dmamux2 {
+    status = "okay";
+};
+
+&pinctrl {
+    /* Creiamo un pin custom per la UART4 specifico per i Neopixel */
+    uart4_tx_ws2812: uart4_tx_ws2812 {
+        pinmux = <STM32_PINMUX('B', 9, AF8)>; /* AF8 è lo standard per UART4_TX su PB9 */
+        bias-disable;
+        drive-push-pull;
+        slew-rate = "very-high-speed"; /* QUESTA è la magia che salva il segnale elettrico */
+    };
+};
+
+&uart5 {
+    status = "okay";
+
+    pinctrl-0 = <&uart5_tx_pc12 &uart5_rx_pb12>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+};
+
+&uart8 {
+    status = "okay";
+
+    pinctrl-0 = <&uart8_tx_pe1 &uart8_rx_pe0>;
+    pinctrl-names = "default";
+    current-speed = <115200>;
+};
+
 &adc1 {
     status = "okay";
     pinctrl-0 = <&adc1_inp9_pb0
                 &adc1_inp8_pc5>;
-    
-    pinctrl-names = "default"; 
+
+    pinctrl-names = "default";
 
     //resolutions = <STM32_ADC_RES(16, 0x00);
 
     st,adc-clock-source = "ASYNC";
 
 
-    // Il primo è il clock di bus, il secondo è quello della periferica. 
+    // Il primo è il clock di bus, il secondo è quello della periferica.
     //è possibile anche aggiungere un fattore di divisione per un prescaler del clock in ingresso
     // il secondo elemento va messo se si sceglie di usare un clock-source async
     clocks = <&rcc STM32_CLOCK(AHB1, 5)>,
@@ -303,7 +883,7 @@
 
     //sampling-times = <33>; // FIXME: random magic number, check in cubemx
     //st,adc-sequencer = "fixed";
-    
+
     #address-cells = <1>;
     #size-cells = <0>;
 
@@ -324,6 +904,19 @@
         zephyr,resolution = <16>;
         //label = "PB0";
     };
+};
+
+
+&dma1 {
+    status = "okay";
+};
+
+&dma2 {
+    status = "okay";
+};
+
+&bdma1 {
+    status = "okay";
 };
 
 &gpioa {

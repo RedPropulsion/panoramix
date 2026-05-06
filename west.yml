@@ -18,3 +18,10 @@ manifest:
           - fatfs
           - littlefs
           - sound
+
+    - name: zephyr-mavlink
+      url: https://github.com/tor1kk/zephyr-mavlink.git
+      revision: main
+      path: modules/zephyr-mavlink
+      submodules: true
+
