@@ -5,7 +5,6 @@ set(BOARD_FLASH_RUNNER openocd)
 set(BOARD_DEBUG_RUNNER openocd)
 
 list(APPEND ZEPHYR_EXTRA_MODULES
-
 )
 
 list(APPEND DTS_ROOT
