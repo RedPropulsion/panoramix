@@ -27,11 +27,12 @@ cd panoramix-workspace
 python -m venv .venv --prompt zephyr
 source .venv/bin/activate # This will add (zephyr) to your prompt
 ```
-> uv
-    ```bash
-    uv venv
-    ```
-instead of `python -m venv .venv --prompt zephyr`
+> uv:
+> ```bash
+> uv venv
+> ```
+> instead of `python -m venv .venv --prompt zephyr`
+
 _(Remember to `deactivate` when you're not developing this project!)_
 
 ### Workspace setup
@@ -43,10 +44,10 @@ pip install west
 west init -m git@github.com:RedPropulsion/panoramix.git panoramix
 ```
 
-> uv
-    ```bash
-    uv pip install west
-    ```
+> uv:
+>```bash
+>uv pip install west
+>```
 
 Inside your workspace you'll see a `panoramix` folder, containing the application code from the repo.
 
@@ -64,10 +65,10 @@ west zephyr-export
 west packages pip --install
 west sdk install --toolchain arm-zephyr-eabi
 ```
->uv
-    ```bash
-    west packages pip | xargs uv pip install
-    ```
+>uv:
+>```bash
+>west packages pip | xargs uv pip install
+>```
 
 ## Usage
 
