@@ -1,0 +1,3 @@
+config LIB_FILE_LOGGER
+    bool "File logger module"
+    default y
