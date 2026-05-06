@@ -1,5 +1,5 @@
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(udp_client, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(udp_client, LOG_LEVEL_INF);
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
@@ -147,8 +147,8 @@ static void eth_thread(void *p1, void *p2, void *p3)
 		return;
 	}
 
-	LOG_INF("UDP socket bound to port %d", UDP_LOCAL_PORT);
-	LOG_INF("Target: %s:%d", UDP_SERVER_IP, UDP_SERVER_PORT);
+	LOG_DBG("UDP socket bound to port %d", UDP_LOCAL_PORT);
+	LOG_DBG("Target: %s:%d", UDP_SERVER_IP, UDP_SERVER_PORT);
 
 	char test_msg[] = "Status: OK";
 	ret = udp_client_send(test_msg, sizeof(test_msg) - 1);
