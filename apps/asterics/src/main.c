@@ -100,8 +100,8 @@ static const struct spi_sensor_test spi5_bmp585 = {
 };
 #endif
 
-/* ─── SPI2: Blocco Primario (A) ─── */
-static const struct spi_sensor_test spi2_sensors[] = {
+/* ─── SPI3: Blocco Primario (A) ─── */
+static const struct spi_sensor_test spi3_sensors[] = {
     {
         "BMI088 Gyro (A)",
         SPI_DT_SPEC_GET(DT_NODELABEL(bmi088_gyro_a),  SPI_OP_FLAGS),
@@ -118,11 +118,11 @@ static const struct spi_sensor_test spi2_sensors[] = {
         ICM42688_WHO_AM_I_REG,    ICM42688_WHO_AM_I_VAL,    false
     },
 };
-static const struct spi_dt_spec spi2_ms5611 =
+static const struct spi_dt_spec spi3_ms5611 =
     SPI_DT_SPEC_GET(DT_NODELABEL(ms5611_a), SPI_OP_FLAGS);
 
-/* ─── SPI3: Blocco Secondario (B) ─── */
-static const struct spi_sensor_test spi3_sensors[] = {
+/* ─── SPI2: Blocco Secondario (B) ─── */
+static const struct spi_sensor_test spi2_sensors[] = {
     {
         "BMI088 Gyro (B)",
         SPI_DT_SPEC_GET(DT_NODELABEL(bmi088_gyro_b),  SPI_OP_FLAGS),
@@ -139,7 +139,7 @@ static const struct spi_sensor_test spi3_sensors[] = {
         ICM42688_WHO_AM_I_REG,    ICM42688_WHO_AM_I_VAL,    false
     },
 };
-static const struct spi_dt_spec spi3_ms5611 =
+static const struct spi_dt_spec spi2_ms5611 =
     SPI_DT_SPEC_GET(DT_NODELABEL(ms5611_b), SPI_OP_FLAGS);
 
 /* ─── SPI4: Sensori Ausiliari ─── */
@@ -406,6 +406,9 @@ static void run_i2c_array(const struct i2c_sensor_test *arr, int n)
  * ═════════════════════════════════════════════════════════════ */
 int main(void)
 {
+
+while (1) {
+
     LOG_INF("=========================================");
     LOG_INF("  AsterICS - Validazione Hardware Sensori");
     LOG_INF("=========================================");
@@ -422,15 +425,17 @@ int main(void)
     LOG_WRN("[SKIP] BMP585 (MCU)     -> status=disabled nel DTS");
 #endif
 
-    /* ── SPI2: Blocco Primario (A) ───────────────────────── */
-    LOG_INF("----- SPI2: Blocco Primario (A) ---------");
-    validate_ms5611("MS5611 (A)", &spi2_ms5611);
+    /* ── SPI3: Blocco Primario (A) ─────────────────────── */
+    LOG_INF("----- SPI3: Blocco Primario (A) -------");
+    validate_ms5611("MS5611 (A)", &spi3_ms5611);
+    run_spi_array(spi3_sensors, ARRAY_SIZE(spi3_sensors));
+
+
+    /* ── SPI2: Blocco Secondario (B) ───────────────────────── */
+    LOG_INF("----- SPI2: Blocco Secondario (B) ---------");
+    validate_ms5611("MS5611 (B)", &spi2_ms5611);
     run_spi_array(spi2_sensors, ARRAY_SIZE(spi2_sensors));
 
-    /* ── SPI3: Blocco Secondario (B) ─────────────────────── */
-    LOG_INF("----- SPI3: Blocco Secondario (B) -------");
-    validate_ms5611("MS5611 (B)", &spi3_ms5611);
-    run_spi_array(spi3_sensors, ARRAY_SIZE(spi3_sensors));
 
     /* ── SPI4: Sensori Ausiliari ──────────────────────────── */
     LOG_INF("----- SPI4: Sensori Ausiliari -----------");
@@ -456,8 +461,10 @@ int main(void)
             g_pass, g_fail, g_pass + g_fail);
     LOG_INF("=========================================");
 
-    while (1) {
-        k_sleep(K_FOREVER);
+    g_pass = 0;
+    g_fail = 0;
+
+        k_sleep(K_MSEC(6000));
     }
 
     return 0;
