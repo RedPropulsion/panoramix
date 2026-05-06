@@ -1,7 +1,0 @@
-name: panoramix-modules
-
-build:
-  cmake: .
-  kconfig: Kconfig
-  settings:
-    dts_root: .
