@@ -30,7 +30,7 @@
     led_strip: ws2812 {
         status = "okay";
         
-        compatible = "panoramix,ws2812-gpio-stm32";
+        compatible = "worldsemi,ws2812-gpio-stm32";
         gpios = <&gpioe 6 GPIO_ACTIVE_HIGH>;
         chain-length = <2>;
         cpu-mhz = <550>;
