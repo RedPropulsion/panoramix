@@ -1,6 +1,6 @@
-description: Panoramix WS2812 bit-bang GPIO driver for STM32H7
+description: Worldsemi WS2812 bit-bang GPIO driver for STM32H7
 
-compatible: "panoramix,ws2812-gpio-stm32"
+compatible: "worldsemi,ws2812-gpio-stm32"
 
 include: base.yaml
 
