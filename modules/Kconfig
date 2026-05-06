@@ -1,3 +1,0 @@
-menu "Modules"
-rsource "sound/Kconfig"
-endmenu
