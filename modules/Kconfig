@@ -1,3 +1,4 @@
 menu "Modules"
 rsource "sound/Kconfig"
+rsource "file_logger/Kconfig"
 endmenu
