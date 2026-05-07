@@ -5,9 +5,9 @@ set(BOARD_FLASH_RUNNER openocd)
 set(BOARD_DEBUG_RUNNER openocd)
 
 list(APPEND ZEPHYR_EXTRA_MODULES
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
     ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/sound
     ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/file_logger
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../drivers
 )
 
 list(APPEND DTS_ROOT
@@ -23,9 +23,11 @@ target_sources(app PRIVATE
     src/udp_client.c
 )
 
+target_link_libraries(app PRIVATE
+    panoramix_sound
+    panoramix_file_logger
+)
+
 target_include_directories(app PRIVATE
     src
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/sound
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/file_logger
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../modules/fatfs/include
 )
