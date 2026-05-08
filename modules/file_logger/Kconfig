@@ -1,0 +1,3 @@
+config FILE_LOGGER
+    bool "File logger module"
+    default y
