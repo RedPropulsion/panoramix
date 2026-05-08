@@ -1,0 +1,8 @@
+config WS2812_GPIO_STM32
+    bool "WS2812 bit-bang driver for STM32H7"
+    depends on DT_HAS_WORLDSEMI_WS2812_GPIO_STM32_ENABLED
+    depends on SOC_SERIES_STM32H7X
+    select GPIO
+    help
+      Bit-bang WS2812 driver for STM32H7 using DWT cycle counter
+      and direct BSRR register access for precise timing.
