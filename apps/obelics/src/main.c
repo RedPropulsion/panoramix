@@ -6,6 +6,8 @@
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
 
+#include <zephyr/fs/fs.h>
+#include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
 #include "sound.h"
 #include "udp_client.h"
@@ -211,8 +213,6 @@ int main(void)
         LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
-
-
     sound_init(&buzzer);
 
 
