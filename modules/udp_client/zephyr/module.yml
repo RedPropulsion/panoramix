@@ -1,0 +1,4 @@
+name: udp_client
+build:
+  cmake: .
+  kconfig: Kconfig

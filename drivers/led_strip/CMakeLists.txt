@@ -1,0 +1,2 @@
+zephyr_library()
+zephyr_library_sources_ifdef(CONFIG_WS2812_GPIO_STM32 ws2812_gpio_stm32.c)

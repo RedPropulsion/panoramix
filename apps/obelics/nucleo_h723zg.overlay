@@ -1,0 +1,117 @@
+#include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/pwm/pwm.h>
+#include <zephyr/dt-bindings/clock/stm32h7_clock.h>
+
+/ {
+    rotary_encoder: rotary_encoder {
+        compatible = "gpio-keys";
+        encoder_s: encoder_switch {
+            gpios = <&gpiog 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Encoder Switch";
+        };
+        encoder_a: encoder_a {
+            gpios = <&gpiod 0 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+            label = "Encoder Phase A";
+        };
+        encoder_b: encoder_b {
+            gpios = <&gpiod 1 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+            label = "Encoder Phase B";
+        };
+    };
+
+    neopixel_enable: neopixel-enable {
+        compatible = "gpio-keys";
+        neopixel_en: neopixel_en {
+            gpios = <&gpioe 5 GPIO_ACTIVE_HIGH>;
+            label = "Neopixel Enable";
+        };
+    };
+
+    led_strip: ws2812 {
+        status = "okay";
+        
+        compatible = "worldsemi,ws2812-gpio-stm32";
+        gpios = <&gpioe 6 GPIO_ACTIVE_HIGH>;
+        chain-length = <2>;
+        cpu-mhz = <550>;
+        color-mapping = [ 01 02 03 ];
+    };
+
+	pwmdevices: pwmdevices {
+		compatible = "pwm-leds";
+		status = "okay";
+
+		buzzer: buzzer {
+			pwms = <&pwm15 1 250000
+				(PWM_POLARITY_INVERTED | STM32_PWM_COMPLEMENTARY)>;
+		};
+	};
+
+};
+
+/* Clocks for SD */
+/* Using default PLL1_Q (137.5MHz) with internal SDMMC divider = 3 gives ~45.8MHz */
+/* Using interrupt mode (no DMA) to avoid MPU faults */
+&sdmmc1 {
+    disk-name = "SD";
+    status = "okay";
+
+    clk-div = <3>;  /* 137.5MHz / 3 = ~45.8MHz (within SD spec) */
+    /delete-property/ dmas;  /* Use interrupt mode instead of DMA */
+    pinctrl-0 = <&sdmmc1_ck_pc12 &sdmmc1_cmd_pd2 &sdmmc1_d0_pc8 &sdmmc1_d1_pc9 &sdmmc1_d2_pc10 &sdmmc1_d3_pc11>;
+    pinctrl-names = "default";
+};
+
+/* Clocks for WS2812B */
+&timers15 {
+    status = "okay";
+    st,prescaler = <31>;
+
+    pwm15: pwm {
+        status = "okay";
+        pinctrl-0 = <&tim15_ch1n_pe4>;
+        pinctrl-names = "default";
+    };
+};
+
+&dma1 {
+    status = "okay";
+};
+
+&dmamux1 {
+    status = "okay";
+};
+
+
+/**********************************************/
+/*              Obelics LoRa                  */
+/**********************************************/
+
+&spi1 {
+    status = "okay";
+    pinctrl-names = "default";
+
+    pinctrl-0 = <&spi1_sck_pa5 &spi1_miso_pa6 &spi1_mosi_pb5>;
+    cs-gpios = <&gpiog 12 (GPIO_ACTIVE_LOW)>;
+
+    lora_sx1261: lora@0 {
+        status = "okay";
+        compatible = "semtech,sx1261";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        label = "SX1261";
+
+        reset-gpios = <&gpioa 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+        dio1-gpios = <&gpioe 11 (GPIO_PULL_DOWN | GPIO_ACTIVE_HIGH)>;
+        busy-gpios = <&gpioe 13 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
+    };
+};
+
+
+/**********************************************/
+/*              Ethernet                      */
+/**********************************************/
+
+&mac {
+    status = "okay";
+};

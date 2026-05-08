@@ -1,2 +1,3 @@
 add_subdirectory_ifdef(CONFIG_SENSOR sensor)
 add_subdirectory_ifdef(CONFIG_SERVO servo)
+add_subdirectory_ifdef(CONFIG_LED_STRIP led_strip)
