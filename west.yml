@@ -17,7 +17,6 @@ manifest:
           - hal_semtech
           - fatfs
           - littlefs
-          - sound
 
     - name: zephyr-mavlink
       url: https://github.com/tor1kk/zephyr-mavlink.git
