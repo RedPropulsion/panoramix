@@ -5,6 +5,8 @@
  * Public GPS API for M10 GNSS driver
  */
 
+//TODO: rename to u_blox_m10_gps.h or something more specific?
+//TODO: move to drivers/gnss/m10s/u_blox_m10s.h? same asms5611
 #ifndef _PANORAMIX_GPS_H_
 #define _PANORAMIX_GPS_H_
 
