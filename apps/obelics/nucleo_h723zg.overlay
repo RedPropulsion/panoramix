@@ -115,3 +115,19 @@
 &mac {
     status = "okay";
 };
+
+
+/**********************************************/
+/*              GNSS (M10)                   */
+/**********************************************/
+
+/* M10 GPS connected on I2C1 - pins to be determined */
+&i2c1 {
+    status = "okay";
+gps: gps@42 {
+        compatible = "u-blox,m10";
+        /* 0x42 = 8-bit I2C address (0x21 = 7-bit). Default address for u-blox M10. */
+        reg = <0x42>;
+        label = "GPS";
+    };
+};
