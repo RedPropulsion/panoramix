@@ -6,6 +6,12 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/check.h>
 
+#ifdef CONFIG_SENSOR_MS5611_ASYNC
+#include <zephyr/drivers/sensor_clock.h>
+#include <zephyr/drivers/spi/rtio.h>
+#include <zephyr/rtio/rtio.h>
+#endif
+
 #define DT_DRV_COMPAT ams_ms5611
 
 #define COMMAND_PROM_READ 0xA0
@@ -21,9 +27,36 @@ struct ms5611_sample {
   int32_t temperature;
 };
 
+#ifdef CONFIG_SENSOR_MS5611_ASYNC
+
+#define MS5611_SPI_OPERATION (SPI_WORD_SET(8) | SPI_TRANSFER_MSB)
+
+struct ms5611_encoded_data {
+  struct ms5611_data *sensor_data;
+  struct {
+    uint64_t timestamp; // in nanoseconds
+  } header;
+  struct {
+    uint8_t has_temp : 1;
+    uint8_t has_press : 1;
+  } flags;
+  struct {
+    int32_t temp;   // centi degrees
+    uint32_t press; // centi Pascal
+  } reading;
+  uint8_t rx_d1[4];
+  uint8_t rx_d2[4];
+} __attribute__((__packed__));
+
+#endif
+
 struct ms5611_data {
   uint16_t coeffs[6];
   struct ms5611_sample last_sample;
+#ifdef CONFIG_SENSOR_MS5611_ASYNC
+  struct rtio *rtio_ctx;
+  struct rtio_iodev *iodev;
+#endif
 };
 
 struct ms5611_config {
@@ -219,22 +252,339 @@ static int ms5611_channel_get(const struct device *dev,
 static int ms5611_attr_set(const struct device *dev, enum sensor_channel chan,
                            enum sensor_attribute attr,
                            const struct sensor_value *val) {
-  return -1;
+  return -ENOTSUP;
 }
+
+#ifdef CONFIG_SENSOR_MS5611_ASYNC
+
+#define MS5611_MEASUREMENT_DELAY_MS 10
+
+static int ms5611_decoder_get_frame_count(const uint8_t *buffer,
+                                          struct sensor_chan_spec chan_spec,
+                                          uint16_t *frame_count) {
+  const struct ms5611_encoded_data *edata =
+      (const struct ms5611_encoded_data *)buffer;
+
+  if (chan_spec.chan_idx != 0) {
+    return -ENOTSUP;
+  }
+
+  switch (chan_spec.chan_type) {
+  case SENSOR_CHAN_AMBIENT_TEMP:
+    *frame_count = edata->flags.has_temp ? 1 : 0;
+    break;
+  case SENSOR_CHAN_PRESS:
+    *frame_count = edata->flags.has_press ? 1 : 0;
+    break;
+  default:
+    return -ENOTSUP;
+  }
+
+  return *frame_count > 0 ? 0 : -ENODATA;
+}
+
+static int ms5611_decoder_get_size_info(struct sensor_chan_spec chan_spec,
+                                        size_t *base_size, size_t *frame_size) {
+  switch (chan_spec.chan_type) {
+  case SENSOR_CHAN_AMBIENT_TEMP:
+  case SENSOR_CHAN_PRESS:
+    *base_size = sizeof(struct sensor_q31_data);
+    *frame_size = sizeof(struct sensor_q31_sample_data);
+    return 0;
+  default:
+    return -ENOTSUP;
+  }
+}
+
+static int ms5611_decoder_decode(const uint8_t *buffer,
+                                 struct sensor_chan_spec chan_spec,
+                                 uint32_t *fit, uint16_t max_count,
+                                 void *data_out) {
+  const struct ms5611_encoded_data *edata =
+      (const struct ms5611_encoded_data *)buffer;
+
+  if (*fit != 0 || max_count < 1) {
+    return -EINVAL;
+  }
+
+  struct sensor_q31_data *out = data_out;
+
+  out->header.base_timestamp_ns = edata->header.timestamp;
+  out->header.reading_count = 1;
+  out->shift = -15;
+
+  switch (chan_spec.chan_type) {
+  case SENSOR_CHAN_AMBIENT_TEMP:
+    if (edata->flags.has_temp) {
+      out->readings[0].value = (edata->reading.temp / 100);
+    } else {
+      return -ENODATA;
+    }
+    break;
+  case SENSOR_CHAN_PRESS:
+    if (edata->flags.has_press) {
+      out->readings[0].value = (edata->reading.press / 100);
+    } else {
+      return -ENODATA;
+    }
+    break;
+  default:
+    return -EINVAL;
+  }
+
+  *fit = 1;
+  return 1;
+}
+
+SENSOR_DECODER_API_DT_DEFINE() = {
+    .get_frame_count = ms5611_decoder_get_frame_count,
+    .get_size_info = ms5611_decoder_get_size_info,
+    .decode = ms5611_decoder_decode,
+};
+
+int ms5611_get_decoder(const struct device *dev,
+                       const struct sensor_decoder_api **decoder) {
+  ARG_UNUSED(dev);
+  *decoder = &SENSOR_DECODER_NAME();
+  return 0;
+}
+
+static void ms5611_complete_result(struct rtio *ctx, const struct rtio_sqe *sqe,
+                                   int result, void *arg) {
+  ARG_UNUSED(arg);
+
+  // Documentation says they can be safely cast to and from each other.
+  // ref:
+  // https://docs.zephyrproject.org/latest/doxygen/html/structrtio__iodev__sqe.html
+  struct rtio_iodev_sqe *iodev_sqe = (struct rtio_iodev_sqe *)sqe;
+
+  if (result < 0) {
+    rtio_iodev_sqe_err(iodev_sqe, result);
+    return;
+  }
+
+  struct ms5611_encoded_data *edata =
+      (struct ms5611_encoded_data *)iodev_sqe->sqe.rx.buf;
+  uint16_t *coeffs = edata->sensor_data->coeffs;
+
+  uint32_t rawPressure = sys_get_be24(&edata->rx_d1[1]);
+  uint32_t rawTemperature = sys_get_be24(&edata->rx_d2[1]);
+
+  uint64_t d1 = rawPressure;
+  uint64_t d2 = rawTemperature;
+  uint64_t dt = d2 - ((uint64_t)coeffs[4] << 8);
+  int32_t temp = (int32_t)(2000 + (dt * coeffs[5] >> 23));
+
+  uint64_t off = ((uint64_t)coeffs[1] << 16) + ((uint64_t)coeffs[3] * dt >> 7);
+  uint64_t sens = ((uint64_t)coeffs[0] << 15) + ((uint64_t)coeffs[2] * dt >> 8);
+  uint32_t pressure = (uint32_t)((((d1 * sens) >> 21) - off) >> 15);
+
+  edata->reading.temp = temp;
+  edata->reading.press = pressure;
+
+  rtio_iodev_sqe_ok(iodev_sqe, 0);
+}
+
+static void ms5611_submit(const struct device *dev,
+                          struct rtio_iodev_sqe *iodev_sqe) {
+  const struct sensor_read_config *read_cfg = iodev_sqe->sqe.iodev->data;
+  struct ms5611_data *data = (struct ms5611_data *)dev->data;
+
+  // Validate requested channels
+  const struct sensor_chan_spec *const channels = read_cfg->channels;
+  const size_t num_channels = read_cfg->count;
+
+  for (size_t i = 0; i < num_channels; i++) {
+    switch (channels[i].chan_type) {
+    case SENSOR_CHAN_AMBIENT_TEMP:
+    case SENSOR_CHAN_PRESS:
+    case SENSOR_CHAN_ALL:
+      break;
+    default:
+      rtio_iodev_sqe_err(iodev_sqe, -ENOTSUP);
+      return;
+    }
+  }
+
+  // Init an rx buffer for rtio operations
+  static const uint32_t min_buf_len = sizeof(struct ms5611_encoded_data);
+  struct ms5611_encoded_data *edata;
+  uint32_t buf_len;
+
+  int err;
+  err = rtio_sqe_rx_buf(iodev_sqe, min_buf_len, min_buf_len, (uint8_t **)&edata,
+                        &buf_len);
+  if (err < 0 || buf_len < min_buf_len || !edata) {
+    LOG_ERR("Failed to get a read buffer of size %u bytes", min_buf_len);
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+
+  edata->flags.has_temp = 0;
+  edata->flags.has_press = 0;
+
+  for (size_t i = 0; i < num_channels; i++) {
+    switch (channels[i].chan_type) {
+    case SENSOR_CHAN_AMBIENT_TEMP:
+      edata->flags.has_temp = 1;
+      break;
+    case SENSOR_CHAN_PRESS:
+      edata->flags.has_press = 1;
+      break;
+    case SENSOR_CHAN_ALL:
+      edata->flags.has_temp = 1;
+      edata->flags.has_press = 1;
+      break;
+    default:
+      break;
+    }
+  }
+
+  // Get hardware timestamp
+  uint64_t cycles;
+  err = sensor_clock_get_cycles(&cycles);
+  if (err != 0) {
+    LOG_ERR("Failed to get sensor clock cycles");
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+  edata->header.timestamp = sensor_clock_cycles_to_ns(cycles);
+  edata->sensor_data = data;
+
+  struct rtio *ctx = data->rtio_ctx;
+  struct rtio_iodev *iodev = data->iodev;
+
+  // Prepare buffers for conversion and reading
+  struct spi_buf tx_d1_conv_buf = {.buf = (uint8_t[]){COMMAND_CONVERT_D1},
+                                   .len = 1};
+  struct spi_buf tx_d1_read_buf = {.buf = (uint8_t[]){COMMAND_ADC_READ},
+                                   .len = 1};
+  struct spi_buf rx_d1_buf = {.buf = edata->rx_d1, .len = 4};
+
+  struct spi_buf_set tx_d1_conv_set = {.buffers = &tx_d1_conv_buf, .count = 1};
+  struct spi_buf_set tx_d1_read_set = {.buffers = &tx_d1_read_buf, .count = 1};
+  struct spi_buf_set rx_d1_set = {.buffers = &rx_d1_buf, .count = 1};
+
+  struct spi_buf tx_d2_conv_buf = {.buf = (uint8_t[]){COMMAND_CONVERT_D2},
+                                   .len = 1};
+  struct spi_buf tx_d2_read_buf = {.buf = (uint8_t[]){COMMAND_ADC_READ},
+                                   .len = 1};
+  struct spi_buf rx_d2_buf = {.buf = edata->rx_d2, .len = 4};
+  struct spi_buf_set tx_d2_conv_set = {.buffers = &tx_d2_conv_buf, .count = 1};
+  struct spi_buf_set tx_d2_read_set = {.buffers = &tx_d2_read_buf, .count = 1};
+  struct spi_buf_set rx_d2_set = {.buffers = &rx_d2_buf, .count = 1};
+
+  struct rtio_sqe *last_sqe;
+
+  err = spi_rtio_copy(ctx, iodev, &tx_d1_conv_set, NULL, &last_sqe);
+  if (err < 0) {
+    LOG_ERR("Failed to prepare SPI write D1 convert");
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+  last_sqe->flags |= RTIO_SQE_CHAINED;
+
+  last_sqe = rtio_sqe_acquire(ctx);
+  if (!last_sqe) {
+    LOG_ERR("Failed to acquire delay SQE");
+    rtio_sqe_drop_all(ctx);
+    rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+    return;
+  }
+  rtio_sqe_prep_delay(last_sqe, K_MSEC(MS5611_MEASUREMENT_DELAY_MS), NULL);
+  last_sqe->flags |= RTIO_SQE_CHAINED;
+
+  err = spi_rtio_copy(ctx, iodev, &tx_d1_read_set, &rx_d1_set, &last_sqe);
+  if (err < 0) {
+    LOG_ERR("Failed to prepare SPI read D1");
+    rtio_sqe_drop_all(ctx);
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+  last_sqe->flags |= RTIO_SQE_CHAINED;
+
+  err = spi_rtio_copy(ctx, iodev, &tx_d2_conv_set, NULL, &last_sqe);
+  if (err < 0) {
+    LOG_ERR("Failed to prepare SPI write D2 convert");
+    rtio_sqe_drop_all(ctx);
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+  last_sqe->flags |= RTIO_SQE_CHAINED;
+
+  last_sqe = rtio_sqe_acquire(ctx);
+  if (!last_sqe) {
+    LOG_ERR("Failed to acquire delay SQE");
+    rtio_sqe_drop_all(ctx);
+    rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+    return;
+  }
+  rtio_sqe_prep_delay(last_sqe, K_MSEC(MS5611_MEASUREMENT_DELAY_MS), NULL);
+  last_sqe->flags |= RTIO_SQE_CHAINED;
+
+  err = spi_rtio_copy(ctx, iodev, &tx_d2_read_set, &rx_d2_set, &last_sqe);
+  if (err < 0) {
+    LOG_ERR("Failed to prepare SPI read D2");
+    rtio_sqe_drop_all(ctx);
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+  last_sqe->flags |= RTIO_SQE_CHAINED;
+
+  struct rtio_sqe *complete_sqe = rtio_sqe_acquire(ctx);
+  if (!complete_sqe) {
+    LOG_ERR("Failed to acquire completion SQE");
+    rtio_sqe_drop_all(ctx);
+    rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+    return;
+  }
+
+  rtio_sqe_prep_callback(complete_sqe, ms5611_complete_result, NULL, NULL);
+
+  rtio_submit(ctx, 0);
+}
+
+#endif
 
 static DEVICE_API(sensor, ms5611_driver_api) = {
     .sample_fetch = ms5611_sample_fetch,
     .channel_get = ms5611_channel_get,
     .attr_set = ms5611_attr_set,
+#ifdef CONFIG_SENSOR_MS5611_ASYNC
+    .submit = ms5611_submit,
+    .get_decoder = ms5611_get_decoder,
+#endif
 };
 
-#define MS5611_INIT(i)                                                         \
-  static struct ms5611_data ms5611_data_##i = {0};                             \
-  static struct ms5611_config ms5611_config_##i = {                            \
-      .spi = SPI_DT_SPEC_INST_GET(i, SPI_WORD_SET(8) | SPI_TRANSFER_MSB),      \
+#ifdef CONFIG_SENSOR_MS5611_ASYNC
+#define MS5611_RTIO_DEFINE(inst)                                               \
+  SPI_DT_IODEV_DEFINE(ms5611_iodev_##inst, DT_DRV_INST(inst),                  \
+                      MS5611_SPI_OPERATION);                                   \
+  RTIO_DEFINE(ms5611_rtio_ctx_##inst, 8, 8);
+
+#define MS5611_INIT(inst)                                                      \
+  MS5611_RTIO_DEFINE(inst);                                                    \
+  static struct ms5611_data ms5611_data_##inst = {                             \
+      .rtio_ctx = &ms5611_rtio_ctx_##inst,                                     \
+      .iodev = &ms5611_iodev_##inst,                                           \
+  };                                                                           \
+  static const struct ms5611_config ms5611_config_##inst = {                   \
+      .spi = SPI_DT_SPEC_INST_GET(inst, MS5611_SPI_OPERATION),                 \
   };                                                                           \
   SENSOR_DEVICE_DT_INST_DEFINE(                                                \
-      i, ms5611_init, NULL, &ms5611_data_##i, &ms5611_config_##i, POST_KERNEL, \
-      CONFIG_SENSOR_INIT_PRIORITY, &ms5611_driver_api);
+      inst, ms5611_init, NULL, &ms5611_data_##inst, &ms5611_config_##inst,     \
+      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &ms5611_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(MS5611_INIT)
+#else
+#define MS5611_INIT(inst)                                                      \
+  static struct ms5611_data ms5611_data_##inst = {0};                          \
+  static const struct ms5611_config ms5611_config_##inst = {                   \
+      .spi = SPI_DT_SPEC_INST_GET(inst, SPI_WORD_SET(8) | SPI_TRANSFER_MSB),   \
+  };                                                                           \
+  SENSOR_DEVICE_DT_INST_DEFINE(                                                \
+      inst, ms5611_init, NULL, &ms5611_data_##inst, &ms5611_config_##inst,     \
+      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &ms5611_driver_api);
+
+DT_INST_FOREACH_STATUS_OKAY(MS5611_INIT)
+#endif
