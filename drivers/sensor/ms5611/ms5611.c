@@ -1,7 +1,6 @@
-#include <string.h>
+#include "ms5611.h"
 
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/spi.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/check.h>
@@ -12,56 +11,7 @@
 #include <zephyr/rtio/rtio.h>
 #endif
 
-#define DT_DRV_COMPAT ams_ms5611
-
-#define COMMAND_PROM_READ 0xA0
-#define COMMAND_ADC_READ 0x00
-#define COMMAND_CONVERT_D1 0x40
-#define COMMAND_CONVERT_D2 0x50
-#define COMMAND_RESET 0x1E
-
 LOG_MODULE_REGISTER(ms5611, CONFIG_SENSOR_LOG_LEVEL);
-
-struct ms5611_sample {
-  int32_t pressure;
-  int32_t temperature;
-};
-
-#ifdef CONFIG_SENSOR_MS5611_ASYNC
-
-#define MS5611_SPI_OPERATION (SPI_WORD_SET(8) | SPI_TRANSFER_MSB)
-
-struct ms5611_encoded_data {
-  struct ms5611_data *sensor_data;
-  struct {
-    uint64_t timestamp; // in nanoseconds
-  } header;
-  struct {
-    uint8_t has_temp : 1;
-    uint8_t has_press : 1;
-  } flags;
-  struct {
-    int32_t temp;   // centi degrees
-    uint32_t press; // centi Pascal
-  } reading;
-  uint8_t rx_d1[4];
-  uint8_t rx_d2[4];
-} __attribute__((__packed__));
-
-#endif
-
-struct ms5611_data {
-  uint16_t coeffs[6];
-  struct ms5611_sample last_sample;
-#ifdef CONFIG_SENSOR_MS5611_ASYNC
-  struct rtio *rtio_ctx;
-  struct rtio_iodev *iodev;
-#endif
-};
-
-struct ms5611_config {
-  struct spi_dt_spec spi;
-};
 
 static int ms5611_read_PROM(struct spi_dt_spec *spi, uint8_t offset,
                             uint16_t *result) {
@@ -135,7 +85,7 @@ static int ms5611_reset(const struct spi_dt_spec *spi) {
     return ret;
   }
 
-  k_sleep(K_MSEC(10));
+  k_sleep(K_MSEC(MS5611_MEASUREMENT_DELAY_MS));
 
   ret = spi_release_dt(&spi_lock);
   if (ret < 0) {
@@ -146,21 +96,21 @@ static int ms5611_reset(const struct spi_dt_spec *spi) {
   return 0;
 }
 
-static void ms5611_compensate(uint32_t rawPressure, uint32_t rawTemperature,
-                              struct ms5611_data *data) {
+static inline void ms5611_compensate_raw(uint32_t rawPressure, uint32_t rawTemperature,
+                                          uint16_t *coeffs,
+                                          int32_t *temp_centideg, int32_t *press_pa) {
   uint64_t d1 = rawPressure;
   uint64_t d2 = rawTemperature;
 
-  uint64_t dt = d2 - (data->coeffs[4] << 8);
-  uint64_t temp = 2000 + (dt * data->coeffs[5] >> 23);
+  uint64_t dt = d2 - ((uint64_t)coeffs[4] << 8);
+  uint64_t temp = 2000 + (dt * coeffs[5] >> 23);
 
-  uint64_t off = (data->coeffs[1] << 16) + ((data->coeffs[3] * dt) >> 7);
-  uint64_t sens = (data->coeffs[0] << 15) + ((data->coeffs[2] * dt) >> 8);
-
+  uint64_t off = ((uint64_t)coeffs[1] << 16) + ((uint64_t)coeffs[3] * dt >> 7);
+  uint64_t sens = ((uint64_t)coeffs[0] << 15) + ((uint64_t)coeffs[2] * dt >> 8);
   uint64_t p = (((d1 * sens) >> 21) - off) >> 15;
 
-  data->last_sample.temperature = temp;
-  data->last_sample.pressure = p;
+  *temp_centideg = (int32_t)temp;
+  *press_pa = (int32_t)p;
 }
 
 static int ms5611_init(const struct device *dev) {
@@ -207,7 +157,7 @@ static int ms5611_sample_fetch(const struct device *dev,
   if (ret < 0) {
     return ret;
   }
-  k_sleep(K_MSEC(10));
+  k_sleep(K_MSEC(MS5611_MEASUREMENT_DELAY_MS));
   ret = ms5611_read_ADC(&conf->spi, &rawPressure);
   if (ret < 0) {
     return ret;
@@ -217,13 +167,16 @@ static int ms5611_sample_fetch(const struct device *dev,
   if (ret < 0) {
     return ret;
   }
-  k_sleep(K_MSEC(10));
+  k_sleep(K_MSEC(MS5611_MEASUREMENT_DELAY_MS));
   ret = ms5611_read_ADC(&conf->spi, &rawTemperature);
   if (ret < 0) {
     return ret;
   }
 
-  ms5611_compensate(rawPressure, rawTemperature, data);
+  int32_t temp, press;
+  ms5611_compensate_raw(rawPressure, rawTemperature, data->coeffs, &temp, &press);
+  data->last_sample.temperature = temp;
+  data->last_sample.pressure = press;
 
   return 0;
 }
@@ -256,8 +209,6 @@ static int ms5611_attr_set(const struct device *dev, enum sensor_channel chan,
 }
 
 #ifdef CONFIG_SENSOR_MS5611_ASYNC
-
-#define MS5611_MEASUREMENT_DELAY_MS 10
 
 static int ms5611_decoder_get_frame_count(const uint8_t *buffer,
                                           struct sensor_chan_spec chan_spec,
@@ -307,6 +258,14 @@ static int ms5611_decoder_decode(const uint8_t *buffer,
     return -EINVAL;
   }
 
+  uint16_t *coeffs = edata->sensor_data->coeffs;
+
+  uint32_t rawPressure = sys_get_be24(&edata->rx_d1[1]);
+  uint32_t rawTemperature = sys_get_be24(&edata->rx_d2[1]);
+
+  int32_t temp, press;
+  ms5611_compensate_raw(rawPressure, rawTemperature, coeffs, &temp, &press);
+
   struct sensor_q31_data *out = data_out;
 
   out->header.base_timestamp_ns = edata->header.timestamp;
@@ -315,18 +274,21 @@ static int ms5611_decoder_decode(const uint8_t *buffer,
 
   switch (chan_spec.chan_type) {
   case SENSOR_CHAN_AMBIENT_TEMP:
-    if (edata->flags.has_temp) {
-      out->readings[0].value = (edata->reading.temp / 100);
-    } else {
+    if (!edata->flags.has_temp) {
       return -ENODATA;
     }
+    // temp is in centi-degrees (e.g., 2500 = 25.00°C)
+    // Convert to Q31: actual °C * 2^15 = centi-degrees * 32768 / 10000
+    out->readings[0].value = (temp * 32768) / 10000;
     break;
   case SENSOR_CHAN_PRESS:
-    if (edata->flags.has_press) {
-      out->readings[0].value = (edata->reading.press / 100);
-    } else {
+    if (!edata->flags.has_press) {
       return -ENODATA;
     }
+    // pressure is in Pa (e.g., 101325 = 1013.25 hPa = 101.325 kPa)
+    // sensor_q31 expects kPa, so convert: Pa / 1000 = kPa
+    // Then convert to Q31: kPa * 2^15 = Pa * 32768 / 1000
+    out->readings[0].value = ((int64_t)press * 32768) / 1000;
     break;
   default:
     return -EINVAL;
@@ -363,25 +325,8 @@ static void ms5611_complete_result(struct rtio *ctx, const struct rtio_sqe *sqe,
     return;
   }
 
-  struct ms5611_encoded_data *edata =
-      (struct ms5611_encoded_data *)iodev_sqe->sqe.rx.buf;
-  uint16_t *coeffs = edata->sensor_data->coeffs;
-
-  uint32_t rawPressure = sys_get_be24(&edata->rx_d1[1]);
-  uint32_t rawTemperature = sys_get_be24(&edata->rx_d2[1]);
-
-  uint64_t d1 = rawPressure;
-  uint64_t d2 = rawTemperature;
-  uint64_t dt = d2 - ((uint64_t)coeffs[4] << 8);
-  int32_t temp = (int32_t)(2000 + (dt * coeffs[5] >> 23));
-
-  uint64_t off = ((uint64_t)coeffs[1] << 16) + ((uint64_t)coeffs[3] * dt >> 7);
-  uint64_t sens = ((uint64_t)coeffs[0] << 15) + ((uint64_t)coeffs[2] * dt >> 8);
-  uint32_t pressure = (uint32_t)((((d1 * sens) >> 21) - off) >> 15);
-
-  edata->reading.temp = temp;
-  edata->reading.press = pressure;
-
+  // Raw ADC data is already in rx_d1 and rx_d2 buffers from SPI operations.
+  // Compensation is done in the decoder to keep separation of concerns.
   rtio_iodev_sqe_ok(iodev_sqe, 0);
 }
 

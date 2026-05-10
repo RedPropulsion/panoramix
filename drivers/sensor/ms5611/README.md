@@ -35,7 +35,10 @@ static int ms5611_sample_fetch(const struct device *dev, enum sensor_channel cha
     ret = ms5611_read_ADC(&conf->spi, &rawPressure);
     
     // Repeat for temperature...
-    ms5611_compensate(rawPressure, rawTemperature, data);
+    int32_t temp, press;
+    ms5611_compensate_raw(rawPressure, rawTemperature, data->coeffs, &temp, &press);
+    data->last_sample.temperature = temp;
+    data->last_sample.pressure = press;
     return 0;
 }
 ```
@@ -107,22 +110,25 @@ struct sensor_decoder_api {
 The encoded data structure is what gets passed through RTIO. It should contain:
 - Timestamp
 - Flags indicating which channels were requested
-- The actual sensor data (raw or processed)
-- Any buffers needed for SPI operations
+- Raw SPI buffers for ADC readings
+- Pointer to device data (for PROM coefficients)
 
 ```c
-// ms5611.c (lines 34-49)
+// ms5611.c (lines 34-46)
 struct ms5611_encoded_data {
     struct ms5611_data *sensor_data;  // Pointer to device data (for coeffs)
     struct { uint64_t timestamp; } header;
     struct { uint8_t has_temp : 1; uint8_t has_press : 1; } flags;
-    struct { int32_t temp; uint32_t press; } reading;  // Compensated values
-    uint8_t rx_d1[4];  // SPI receive buffer for pressure
-    uint8_t rx_d2[4];  // SPI receive buffer for temperature
+    uint8_t rx_d1[4];  // Raw ADC data for pressure (D1)
+    uint8_t rx_d2[4];  // Raw ADC data for temperature (D2)
 } __attribute__((__packed__));
 ```
 
-**Key insight**: Embed the SPI rx buffers directly in the encoded data structure. This ensures they live in the right memory location for the callback to access them.
+**Note on flags**: The `has_temp` and `has_press` flags are included for API completeness and consistency with other sensors (like bme280, lis2dux12). However, in this specific case they don't serve a real purpose because:
+1. MS5611 pressure calculation requires temperature data (`dt` value), so we must always read both D1 and D2
+2. The driver always fetches both raw values regardless of which channels were requested
+
+The flags exist mainly for decoder correctness - if user requests only temperature, the decoder returns `-ENODATA` for pressure based on the flag. But since we always read both, in practice both flags will always be set.
 
 ### Step 3: Add RTIO Fields to Data Structure
 
@@ -269,92 +275,103 @@ static void ms5611_submit(const struct device *dev, struct rtio_iodev_sqe *iodev
 The callback receives the result. With `rtio_sqe_prep_callback()`, the callback receives the result directly without needing to manually consume CQEs:
 
 ```c
-// ms5611.c (lines 352-386)
+// ms5611.c (lines 348-363)
 static void ms5611_complete_result(struct rtio *ctx, const struct rtio_sqe *sqe,
                                    int result, void *arg) {
     // rtio_sqe and rtio_iodev_sqe can be safely cast to each other
     // (rtio_iodev_sqe has rtio_sqe as its first member)
     struct rtio_iodev_sqe *iodev_sqe = (struct rtio_iodev_sqe *)sqe;
-    
+
     if (result < 0) {
         rtio_iodev_sqe_err(iodev_sqe, result);
         return;
     }
-    
-    // In this implementation, compensation is done in the decoder (see below)
-    // But you could also do it here:
-    // struct ms5611_encoded_data *edata = iodev_sqe->sqe.rx.buf;
-    // uint16_t *coeffs = edata->sensor_data->coeffs;
-    // ...do compensation...
-    
+
+    // Raw ADC data is already in rx_d1 and rx_d2 buffers from SPI operations.
+    // Compensation is done in the decoder to keep separation of concerns.
+
     rtio_iodev_sqe_ok(iodev_sqe, 0);
 }
 ```
 
+**Key design decision**: The callback is a simple pass-through. All data transformation (compensation, unit conversion, Q31 encoding) happens in the decoder. This follows the principle of separation of concerns.
+
 ### Step 7: Implement the Decoder
 
-The decoder converts the encoded data to the standard q31 format:
+The decoder does two things:
+1. **Compensation**: Converts raw ADC values (D1, D2) to compensated pressure/temperature using PROM coefficients
+2. **Q31 conversion**: Converts to standard sensor Q31 format with correct units
 
 ```c
-// ms5611.c (lines 262-343)
-static int ms5611_decoder_get_frame_count(const uint8_t *buffer,
-                                          struct sensor_chan_spec chan_spec,
-                                          uint16_t *frame_count) {
-    const struct ms5611_encoded_data *edata = (const struct ms5611_encoded_data *)buffer;
-    
-    switch (chan_spec.chan_type) {
-    case SENSOR_CHAN_AMBIENT_TEMP:
-        *frame_count = edata->flags.has_temp ? 1 : 0;
-        break;
-    case SENSOR_CHAN_PRESS:
-        *frame_count = edata->flags.has_press ? 1 : 0;
-        break;
-    default:
-        return -ENOTSUP;
-    }
-    return *frame_count > 0 ? 0 : -ENODATA;
-}
-
-static int ms5611_decoder_get_size_info(struct sensor_chan_spec chan_spec,
-                                         size_t *base_size, size_t *frame_size) {
-    *base_size = sizeof(struct sensor_q31_data);
-    *frame_size = sizeof(struct sensor_q31_sample_data);
-    return 0;
-}
-
+// ms5611.c (lines 295-357)
 static int ms5611_decoder_decode(const uint8_t *buffer,
                                   struct sensor_chan_spec chan_spec,
                                   uint32_t *fit, uint16_t max_count,
                                   void *data_out) {
     const struct ms5611_encoded_data *edata = (const struct ms5611_encoded_data *)buffer;
+
+    if (*fit != 0 || max_count < 1) {
+        return -EINVAL;
+    }
+
+    // Get PROM coefficients from device data
+    uint16_t *coeffs = edata->sensor_data->coeffs;
+
+    // Read raw ADC values from SPI buffers
+    uint32_t rawPressure = sys_get_be24(&edata->rx_d1[1]);
+    uint32_t rawTemperature = sys_get_be24(&edata->rx_d2[1]);
+
+    // MS5611 compensation algorithm (from manufacturer datasheet)
+    uint64_t d1 = rawPressure;
+    uint64_t d2 = rawTemperature;
+    uint64_t dt = d2 - ((uint64_t)coeffs[4] << 8);
+    int32_t temp = (int32_t)(2000 + (dt * coeffs[5] >> 23));
+
+    uint64_t off = ((uint64_t)coeffs[1] << 16) + ((uint64_t)coeffs[3] * dt >> 7);
+    uint64_t sens = ((uint64_t)coeffs[0] << 15) + ((uint64_t)coeffs[2] * dt >> 8);
+    uint32_t pressure = (uint32_t)((((d1 * sens) >> 21) - off) >> 15);
+
     struct sensor_q31_data *out = data_out;
-    
+
     out->header.base_timestamp_ns = edata->header.timestamp;
     out->header.reading_count = 1;
-    out->shift = -15;  // Values are in centi-units, divide by 100
-    
+    out->shift = -15;  // Q31 format with 2^15 scaling
+
     switch (chan_spec.chan_type) {
     case SENSOR_CHAN_AMBIENT_TEMP:
-        if (edata->flags.has_temp) {
-            out->readings[0].value = (edata->reading.temp / 100);
-        } else {
+        if (!edata->flags.has_temp) {
             return -ENODATA;
         }
+        // temp is in centi-degrees (e.g., 2500 = 25.00°C)
+        // Convert to Q31: actual °C * 2^15 = centi-degrees * 32768 / 10000
+        out->readings[0].value = (temp * 32768) / 10000;
         break;
     case SENSOR_CHAN_PRESS:
-        if (edata->flags.has_press) {
-            out->readings[0].value = (edata->reading.press / 100);
-        } else {
+        if (!edata->flags.has_press) {
             return -ENODATA;
         }
+        // pressure is in Pa (e.g., 101325 = 1013.25 hPa)
+        // sensor_q31 expects kPa, so convert: Pa / 1000 = kPa
+        // Then convert to Q31: kPa * 2^15 = Pa * 32768 / 1000
+        out->readings[0].value = ((int64_t)pressure * 32768) / 1000;
         break;
     default:
         return -EINVAL;
     }
-    
+
     *fit = 1;
     return 1;
 }
+```
+
+**Important: MS5611 compensation dependency**
+
+The MS5611 pressure calculation requires temperature data (the `dt` value). This means:
+- If only **pressure** is requested, the driver still reads both D1 (pressure) and D2 (temperature) raw values
+- The decoder uses both to compute compensated pressure
+- Temperature can be fetched independently (it only needs D2)
+
+This is why the submit function always reads both D1 and D2 regardless of which channels are requested.
 
 SENSOR_DECODER_API_DT_DEFINE() = {
     .get_frame_count = ms5611_decoder_get_frame_count,
@@ -369,6 +386,20 @@ int ms5611_get_decoder(const struct device *dev,
     return 0;
 }
 ```
+
+**Important: Why the decoder doesn't need to handle `SENSOR_CHAN_ALL`**
+
+Looking at how the sensor shell iterates through channels (`sensor_shell.c` line 381):
+
+```c
+for (struct sensor_chan_spec ch = {0, 0}; ch.chan_type < SENSOR_CHAN_ALL; ch.chan_type++) {
+```
+
+The framework **never passes `SENSOR_CHAN_ALL` to decoder functions**. It iterates through all individual channel types **less than** `SENSOR_CHAN_ALL`. So the decoder is called separately for each channel (e.g., `SENSOR_CHAN_PRESS`, `SENSOR_CHAN_AMBIENT_TEMP`).
+
+The `SENSOR_CHAN_ALL` is only a shorthand in the **submit** function to request all supported channels at once. The decoder handles each channel individually.
+
+Other sensors (like bmp581, rm3100) handle this the same way - they have helper functions like `bmp581_encode_channel()` that map `SENSOR_CHAN_ALL` to bitmasks for internal use, but the decoder itself only processes individual channels.
 
 ---
 
@@ -408,7 +439,159 @@ Key error handling patterns:
 
 ---
 
-## Part 5: Kconfig Dependencies
+## Part 5: Decoder Deep Dive
+
+### Understanding Base Size vs Frame Size
+
+The decoder's `get_size_info()` function reports two sizes that describe the output data structure:
+
+```c
+static int ms5611_decoder_get_size_info(struct sensor_chan_spec chan_spec,
+                                         size_t *base_size, size_t *frame_size) {
+    *base_size = sizeof(struct sensor_q31_data);
+    *frame_size = sizeof(struct sensor_q31_sample_data);
+    return 0;
+}
+```
+
+**What these mean:**
+
+| Size | Value | Represents |
+|------|-------|------------|
+| `base_size` | `sizeof(struct sensor_q31_data)` (~26 bytes) | The FULL structure including header + shift + **first reading** |
+| `frame_size` | `sizeof(struct sensor_q31_sample_data)` (8 bytes) | Just **one additional reading** beyond the first |
+
+**Visual representation:**
+
+```
+base_size = everything in this box:
+┌─────────────────────────────────────┐
+│ header (base_timestamp_ns)         │  ← 8 bytes
+│ header (reading_count)             │  ← 2 bytes + padding
+│ shift                              │  ← 8 bytes aligned
+│ readings[0] (timestamp_delta)     │  ← 4 bytes
+│ readings[0] (value)               │  ← 4 bytes
+└─────────────────────────────────────┘
+
+frame_size = just this per extra reading:
+┌─────────────────────────────────────┐
+│ readings[N] (timestamp_delta)      │  ← 4 bytes
+│ readings[N] (value)               │  ← 4 bytes
+└─────────────────────────────────────┘
+```
+
+**Why the difference matters:**
+
+The decoder supports variable numbers of readings. If you want to decode 3 samples:
+
+```
+Total buffer needed = base_size + frame_size * (reading_count - 1)
+                     = base_size + 2 * frame_size
+```
+
+For single reading (reading_count = 1), only `base_size` is needed.
+
+### Q31 Format and Shift
+
+The decoder outputs `q31_t` values, which is a fixed-point number format:
+
+```c
+typedef int32_t q31_t;  // From zephyr/dsp/types.h
+```
+
+Q31 represents a value between approximately -1.0 and +1.0 using 32 bits (1 sign bit + 31 fractional bits).
+
+**The `shift` field** tells the consumer how to interpret the raw integer:
+
+| shift value | Meaning |
+|-------------|---------|
+| 0 | The integer value IS the actual value (scaled by 2^0 = 1) |
+| -15 | The integer value represents `actual_value × 2^15` |
+| +8 | The integer value represents `actual_value / 2^8` |
+
+To convert from Q31 to actual value:
+```
+actual = q31_value / 2^|shift|   (when shift is negative)
+actual = q31_value × 2^shift     (when shift is positive)
+```
+
+The print helper shows how this works (`zephyr/dsp/print_format.h`):
+```c
+// For shift = -15: actual = value / 32768
+// For shift = 0:    actual = value
+```
+
+### Units: The Critical Detail
+
+From `sensor_data_types.h`, the `sensor_q31_data` union specifies expected units:
+
+```c
+struct sensor_q31_sample_data {
+    union {
+        q31_t value;
+        q31_t pressure;        /**< Unit: kilopascal */
+        q31_t temperature;     /**< Unit: degrees Celsius */
+        // ... other units
+    };
+};
+```
+
+**This is critical:**
+- Pressure must be in **kilopascals (kPa)**, not Pascals (Pa)
+- Temperature must be in **degrees Celsius (°C)**
+
+### Decoder Conversion Issues
+
+The current encoded data stores values in different units:
+
+```c
+struct ms5611_encoded_data {
+    ...
+    uint8_t rx_d1[4];  // Raw ADC data for pressure (D1)
+    uint8_t rx_d2[4];  // Raw ADC data for temperature (D2)
+};
+```
+
+In the current implementation, compensation happens in the decoder. The decoder:
+1. Reads raw D1 and D2 from `rx_d1` and `rx_d2`
+2. Performs compensation using PROM coefficients from `sensor_data->coeffs`
+3. Converts to Q31 with correct units
+
+**Correct Q31 conversion:**
+
+For temperature (°C → Q31 with shift=-15):
+```c
+// temp is in centi-degrees after compensation
+// Convert to Q31: actual °C * 2^15 = centi-deg * 32768 / 10000
+out->readings[0].value = (temp * 32768) / 10000;
+```
+
+For pressure (Pa → kPa → Q31 with shift=-15):
+```c
+// pressure is in Pa after compensation
+// sensor_q31 expects kPa, so convert: Pa / 1000 = kPa
+// Then to Q31: kPa * 2^15 = Pa * 32768 / 1000
+out->readings[0].value = ((int64_t)pressure * 32768) / 1000;
+```
+
+**Why the decoder handles compensation:**
+
+The MS5611 pressure calculation requires temperature data (the `dt` value). Since:
+- Pressure cannot be calculated without temperature data
+- But temperature can be fetched independently
+
+The cleanest approach is to do all compensation in the decoder where both D1 and D2 are available. This keeps the callback as a simple pass-through and maintains separation of concerns.
+
+### Summary: Decoder Contract
+
+The decoder must:
+1. **Report correct sizes** via `get_size_info()` - `base_size` includes header+shift+first reading
+2. **Output correct units** - kPa for pressure, °C for temperature
+3. **Convert to Q31** - Apply proper scaling so the consumer interprets the value correctly based on `shift`
+
+---
+
+## Part 6: Kconfig Dependencies
 
 ```kconfig
 # Kconfig (in driver directory)
