@@ -13,7 +13,7 @@
 #include <zephyr/sys/atomic.h>
 
 #include "gnss_u_blox_m10_i2c.h"
-#include "gps.h"
+#include "gnss_u_blox_m10.h"
 
 LOG_MODULE_REGISTER(gnss_u_blox_m10, CONFIG_GNSS_LOG_LEVEL);
 
