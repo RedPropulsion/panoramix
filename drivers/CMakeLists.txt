@@ -1,2 +1,3 @@
 add_subdirectory_ifdef(CONFIG_SENSOR sensor)
 add_subdirectory_ifdef(CONFIG_LED_STRIP led_strip)
+add_subdirectory_ifdef(CONFIG_GNSS_U_BLOX_M10 gnss)
