@@ -5,12 +5,12 @@
         "cortex-debug.gdbPath.linux": "${userHome}/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb",
         //"cortex-debug.stlinkPath.linux": , //TODO: check where the stlink is located
 
-        "cmake.sourceDirectory": "${workspaceFolder}/panoramix.git/apps/asterics",
+        "cmake.sourceDirectory": "${workspaceFolder}/apps/asterics",
         "terminal.integrated.cwd":  "${workspaceFolder}",
 
         //intellisense
         "C_Cpp.default.compilerPath": "${userHome}/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
-        "C_Cpp.default.compileCommands": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics/build/compile_commands.json"
+        "C_Cpp.default.compileCommands": "${workspaceFolder}/panoramix/apps/asterics/build/compile_commands.json"
     },
     "tasks": {
         "version": "2.0.0",
@@ -21,14 +21,14 @@
                 "type": "shell",
                 "args": [
                     "build",
-                    "${workspaceFolder}/panoramix/panoramix.git/apps/asterics",
+                    "${workspaceFolder}/panoramix/apps/asterics",
                     "-b",
                     "asterics",
                     "-p",
                     "auto"
                 ],
                 "options": {
-                    "cwd": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics"
+                    "cwd": "${workspaceFolder}/panoramix/apps/asterics"
                 },
                 "group": {
                     "kind": "build",
@@ -57,7 +57,7 @@
                 "request": "launch",
                 "servertype": "openocd",
                 "cwd": "${workspaceFolder}",
-                "executable": "${workspaceFolder}/panoramix/panoramix.git/apps/asterics/build/zephyr.elf", //TODO: correct?
+                "executable": "${workspaceFolder}/panoramix/apps/asterics/build/zephyr.elf", //TODO: correct?
                 "device": "STM32H723",
                 "preLaunchTask": "west build"
                 /*"configFiles": [
