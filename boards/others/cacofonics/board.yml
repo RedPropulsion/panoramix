@@ -1,0 +1,5 @@
+board:
+  name: cacofonics
+  full_name: CacofonICS
+  socs:
+    - name: stm32l412xx

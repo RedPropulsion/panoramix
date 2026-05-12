@@ -9,7 +9,4 @@ board_runner_args(openocd
     "--cmd-pre-init" "gdb_report_data_abort enable"
 )
 
-    # "--cmd-pre-init" "adapter driver st-link"
-    # "--cmd-pre-init" "transport select dapdirect_swd"
-
 include(${ZEPHYR_BASE}/boards/common/openocd.board.cmake)
