@@ -5,14 +5,15 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
-
+#include <zephyr/drivers/display.h>
+#include <lvgl.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
 #include "sound.h"
 #include "udp_client.h"
 
-LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 /* ------------------------------------------------------------------ *
  * SD Card / FATFS
@@ -221,6 +222,13 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 }
 
 /* ------------------------------------------------------------------ *
+ * Oled Display
+ * ------------------------------------------------------------------ */
+const struct device *disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
+
+
+
+/* ------------------------------------------------------------------ *
  * Main
  * ------------------------------------------------------------------ */
 int main(void)
@@ -236,11 +244,11 @@ int main(void)
         LOG_ERR("LoRa device not ready");
     } else {
         lora_tx_config.frequency = 868000000;
-        lora_tx_config.bandwidth = BW_125_KHZ;
-        lora_tx_config.datarate = SF_7;
+        lora_tx_config.bandwidth = BW_250_KHZ;
+        lora_tx_config.datarate = SF_8;
         lora_tx_config.coding_rate = CR_4_5;
         lora_tx_config.preamble_len = 12;
-        lora_tx_config.tx_power = 4;
+        lora_tx_config.tx_power = 14;
         lora_tx_config.tx = true;
         lora_tx_config.iq_inverted = false;
         lora_tx_config.public_network = false;
@@ -249,9 +257,12 @@ int main(void)
         if (ret < 0) {
             LOG_ERR("LoRa config failed: %d", ret);
         } else {
-            LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+            LOG_INF("LoRa initialized: 868 MHz, SF8, 14 dBm");
         }
-    }
+    }    
+    char buf[255] = {0};
+    int16_t RSSI;
+    int8_t SNR;
 
     /* Mount SD card */
     
@@ -260,7 +271,6 @@ int main(void)
     // LOG_INF("Mounting SD card...");
     // fatfs_mount();
     // #endif
-    
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
@@ -311,6 +321,22 @@ int main(void)
     gpio_init_callback(&enc_sw_cb_data, encoder_handler, BIT(enc_sw.pin));
     gpio_add_callback(enc_sw.port, &enc_sw_cb_data);
 
+    /* Oled Display */
+    if (!device_is_ready(disp)) {
+        LOG_ERR("Display not ready");
+        return 0;
+    }
+    
+    lv_obj_t *label = lv_label_create(lv_scr_act());
+    lv_label_set_text(label, "Hello Zephyr!");
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+
+
+    if (!device_is_ready(disp)) {
+        LOG_ERR("Oled Display not ready");
+        return 0;
+    }
+
     /* B1 User button */
     if (!gpio_is_ready_dt(&user_btn)) {
         LOG_ERR("User button not ready");
@@ -319,14 +345,10 @@ int main(void)
     gpio_pin_configure_dt(&user_btn, GPIO_INPUT);
 
     /* Verify you can actually read the pin */
-    // LOG_DBG("Button init done. Current pin state: %d\n", gpio_pin_get_dt(&user_btn));
-
     ret = gpio_pin_interrupt_configure_dt(&user_btn, GPIO_INT_EDGE_FALLING);
 
     gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
     ret = gpio_add_callback(user_btn.port, &btn_cb_data);
-
-
 
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
@@ -349,13 +371,32 @@ int main(void)
         memset(pixels, 0, sizeof(pixels));
         if (toggle) {
             pixels[0].r = 128;
+            pixels[3].r = 128;
+            pixels[3].b = 128;
         } else {
             pixels[1].b = 128;
+            pixels[2].g = 128;
         }
         toggle = !toggle;
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
-        k_sleep(K_SECONDS(5));
+
+
+        int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
+        if (err == -EAGAIN) {
+            LOG_DBG("No LoRa RX data yet");
+        } else if (err < 0) {
+            LOG_ERR("LoRa RX failed: %d", err);
+            lv_label_set_text_fmt(label, "LoRa RX failed: %d", err);
+        } else {
+            LOG_INF("LoRa RX: %d bytes: %s", err, buf);
+            LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
+            lv_label_set_text_fmt(label, "RSSI: %d, SNR: %d", RSSI, SNR);
+        }
+            lv_task_handler();
+
+        k_sleep(K_SECONDS(3));
+
     }
     return 0;
 }

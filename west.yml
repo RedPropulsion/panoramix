@@ -16,7 +16,7 @@ manifest:
           - lora-basics-modem
           - hal_semtech
           - fatfs
-          - littlefs
+          - lvgl
 
     - name: zephyr-mavlink
       url: https://github.com/tor1kk/zephyr-mavlink.git

@@ -2,6 +2,9 @@
 #include <zephyr/dt-bindings/pwm/pwm.h>
 #include <zephyr/dt-bindings/clock/stm32h7_clock.h>
 
+
+
+
 / {
     rotary_encoder: rotary_encoder {
         compatible = "gpio-keys";
@@ -32,7 +35,7 @@
         
         compatible = "worldsemi,ws2812-gpio-stm32";
         gpios = <&gpioe 6 GPIO_ACTIVE_HIGH>;
-        chain-length = <2>;
+        chain-length = <4>;
         cpu-mhz = <550>;
         color-mapping = [ 01 02 03 ];
     };
@@ -121,13 +124,36 @@
 /*              GNSS (M10)                   */
 /**********************************************/
 
-/* M10 GPS connected on I2C1 - pins to be determined */
-&i2c1 {
+&i2c2 {
     status = "okay";
-gps: gps@42 {
+    pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
+    pinctrl-names = "default";
+
+
+    gps: gps@21 {
         compatible = "u-blox,m10";
         /* 0x42 = 8-bit I2C address (0x21 = 7-bit). Default address for u-blox M10. */
-        reg = <0x42>;
+        reg = <0x21>;
         label = "GPS";
     };
+
+
+    ssd1309: ssd1309@3c {
+        compatible = "solomon,ssd1309";
+        label = "SSD1309";
+        reg = <0x3c>;
+        width = <128>;
+        height = <64>;
+        
+        // SSD1309 specific settings (adjust based on panel vendor)
+        segment-offset = <0>;
+        page-offset = <0>;
+        display-offset = <0>;
+        multiplex-ratio = <63>;
+        segment-remap;
+        com-invdir;
+        prechargep = <0x22>;
+    };
+
+
 };
