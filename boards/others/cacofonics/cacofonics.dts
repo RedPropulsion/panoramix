@@ -186,12 +186,16 @@
 
     pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
     pinctrl-names = "default";
+    tx-rx-swap;
 
     current-speed = <115200>;
     // usart1 uses the APB1 clock, but adapts it to the selected speed.
     // Note: 80MHz APB2 clock gives +0.06% error (should be within ± 2.5%).
 
-    // TODO: DMA: connected both tx and rx
+    // Doesn't use DMAMUX, but instead uses CSELR
+    dmas = <&dma1 4 2 STM32_DMA_PERIPH_TX>,
+           <&dma1 5 2 STM32_DMA_PERIPH_RX>;
+    dma-names = "tx", "rx";
 };
 
 &usart2 { // Seriale per comunicazione ESP32S3
@@ -228,5 +232,9 @@
 };
 
 &gpioh {
+    status = "okay";
+};
+
+&dma1 {
     status = "okay";
 };

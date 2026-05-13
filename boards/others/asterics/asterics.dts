@@ -782,12 +782,17 @@
     current-speed = <115200>;
 };
 
+// Serial communication with CacofonICS
 &usart3 {
     status = "okay";
 
     pinctrl-0 = <&usart3_tx_pd8 &usart3_rx_pd9>;
     pinctrl-names = "default";
     current-speed = <115200>;
+
+    dmas = <&dmamux1 1 46 STM32_DMA_PERIPH_TX>,
+           <&dmamux1 2 45 STM32_DMA_PERIPH_RX>;
+    dma-names = "tx", "rx";
 };
 
 &uart4 {
