@@ -1,0 +1,6 @@
+if(CONFIG_FILE_LOGGER)
+  zephyr_library()
+  zephyr_library_sources(src/file_logger.c)
+  zephyr_include_directories(include)
+  zephyr_library_link_libraries(ELMFAT)
+endif()

@@ -1,0 +1,4 @@
+name: file_logger
+build:
+  cmake: .
+  kconfig: Kconfig
