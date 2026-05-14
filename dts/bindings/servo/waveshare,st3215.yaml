@@ -4,4 +4,3 @@ compatible: "waveshare,st3215"
 
 include: base.yaml
 
-properties:

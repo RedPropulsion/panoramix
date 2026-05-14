@@ -115,3 +115,15 @@
 &mac {
     status = "okay";
 };
+
+&usart2 {
+    status = "okay";
+
+    pinctrl-0 = <&usart2_tx_pd5 &usart2_rx_pd6>;
+    pinctrl-names = "default";
+
+    st3215: servo {
+        status = "okay";
+        compatible = "waveshare,st3215";
+    };
+};
