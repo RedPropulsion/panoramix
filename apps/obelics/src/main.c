@@ -5,15 +5,18 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/logging/log_ctrl.h>
 #include <zephyr/drivers/display.h>
-#include <lvgl.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
+#include <zephyr/display/cfb.h>
 #include "sound.h"
 #include "udp_client.h"
 
-LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
+#include <zephyr/drivers/i2c.h>
+
+LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* ------------------------------------------------------------------ *
  * SD Card / FATFS
@@ -224,9 +227,68 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 /* ------------------------------------------------------------------ *
  * Oled Display
  * ------------------------------------------------------------------ */
-const struct device *disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
+// #define DISP_NODE DT_NODELABEL(ssd1309);
+// const struct device *disp = DEVICE_DT_GET(DISP_NODE);
+
+static const struct device *disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
+
+/*
+
+char buf[64];
+snprintf(buf, sizeof(buf), "Error: %d", err);
+
+formats printf-style into buf, then use cfb_print(disp, buf, x, y) to display on the screen.
+*/
+const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c2));
+
+void i2c_scan_bus(const struct device *i2c_dev)
+{
+    uint8_t first = 0x04;   // First valid I2C address
+    uint8_t last = 0x77;    // Last valid I2C address (7-bit)
+    
+    LOG_INF("Scanning I2C bus %s...", i2c_dev->name);
+    
+    for (uint8_t addr = first; addr <= last; addr++) {
+        struct i2c_msg msgs[1];
+        uint8_t dummy;
+        
+        // 0-byte write: send address only, check for ACK
+        msgs[0].buf = &dummy;
+        msgs[0].len = 0U;
+        msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+        
+        if (i2c_transfer(i2c_dev, &msgs[0], 1, addr) == 0) {
+            LOG_INF("  Found device at 0x%02x", addr);
+        }
+    }
+    
+    LOG_INF("Scan complete");
+}
 
 
+void display_string(const char *fmt, ...)
+{
+    char buf[64];  // adjust size as needed
+    int ret;
+    
+    va_list args;
+    va_start(args, fmt);
+    ret = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    LOG_INF("Formatted string length: %d", ret);
+    LOG_INF("Formatted string: %s", buf);
+    
+    cfb_framebuffer_clear(disp, false);  // clear buffer only
+    ret = cfb_print(disp, buf, 0, 0);          // print at (0,0)
+    if (ret < 0) {
+        LOG_ERR("Failed to print string: %d", ret);
+        return;
+    } else {
+        LOG_INF("String printed to framebuffer with return code: %d", ret);
+    }
+    cfb_framebuffer_finalize(disp);       // WRITE to display
+}
 
 /* ------------------------------------------------------------------ *
  * Main
@@ -235,6 +297,74 @@ int main(void)
 {   
      LOG_INF("Starting main()");
     int ret;
+
+    
+
+    if (!device_is_ready(i2c_dev)) {
+        LOG_ERR("I2C device not ready");
+        return 0;
+    }
+    // i2c_scan_bus(i2c_dev);
+
+
+/* Oled Display */
+    if (!device_is_ready(disp)) {
+        LOG_ERR("Display not ready");
+        return 0;
+    }
+
+    if (display_set_pixel_format(disp, PIXEL_FORMAT_MONO10) != 0) {
+       if (display_set_pixel_format(disp, PIXEL_FORMAT_MONO01) != 0) {
+           LOG_ERR("Failed to set Display Format");
+           return 0;
+       }else{
+        LOG_DBG("Set Display format to 01");
+       }
+   }else{
+    LOG_DBG("Set Display format to 10");
+   }
+
+
+    struct display_capabilities caps;
+    display_get_capabilities(disp, &caps);
+    LOG_DBG("Display caps: %dx%d, format=%d", 
+    caps.x_resolution, caps.y_resolution, caps.current_pixel_format);
+
+    ret = cfb_framebuffer_init(disp);
+    if (ret < 0) {
+        LOG_ERR("Failed to initialize framebuffer: %d", ret);
+        return 0;
+    }
+    ret = cfb_framebuffer_clear(disp, true);
+    if (ret < 0) {
+        LOG_ERR("Failed to clear framebuffer: %d", ret);
+        return 0;
+    }
+    ret = display_blanking_off(disp);
+    if (ret < 0) {
+        LOG_ERR("Failed to turn off display blanking: %d", ret);
+        return 0;
+    }
+
+    // cfb_print(disp, "Booting...", 0, 0);
+    // cfb_framebuffer_finalize(disp);
+
+    display_string("Booting...");
+
+
+    uint8_t width, height;
+    uint8_t num_fonts = cfb_get_numof_fonts(disp);
+
+    // Loop through available fonts to get their dimensions
+    for (uint8_t i = 0; i < num_fonts; i++) {
+        cfb_get_font_size(disp, i, &width, &height);
+        // printk("Font Index %d: %dx%d pixels\n", i, width, height);
+        cfb_framebuffer_set_font(disp, i);
+        display_string("Font %d: %dx%d", i, width, height);
+        k_sleep(K_SECONDS(2));
+    }
+
+    cfb_framebuffer_set_font(disp, 0);
 
     
     udp_client_init();
@@ -321,21 +451,7 @@ int main(void)
     gpio_init_callback(&enc_sw_cb_data, encoder_handler, BIT(enc_sw.pin));
     gpio_add_callback(enc_sw.port, &enc_sw_cb_data);
 
-    /* Oled Display */
-    if (!device_is_ready(disp)) {
-        LOG_ERR("Display not ready");
-        return 0;
-    }
     
-    lv_obj_t *label = lv_label_create(lv_scr_act());
-    lv_label_set_text(label, "Hello Zephyr!");
-    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
-
-
-    if (!device_is_ready(disp)) {
-        LOG_ERR("Oled Display not ready");
-        return 0;
-    }
 
     /* B1 User button */
     if (!gpio_is_ready_dt(&user_btn)) {
@@ -344,7 +460,6 @@ int main(void)
     }
     gpio_pin_configure_dt(&user_btn, GPIO_INPUT);
 
-    /* Verify you can actually read the pin */
     ret = gpio_pin_interrupt_configure_dt(&user_btn, GPIO_INT_EDGE_FALLING);
 
     gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
@@ -354,10 +469,10 @@ int main(void)
     bool toggle = false;
     uint8_t tx_buf[] = "Hello LoRa!";
     int lora_counter = 0;
-
-
     LOG_INF("Starting main loop...\n");
+
     while (1) {
+        display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
         if (device_is_ready(lora_dev)) {
             int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
@@ -385,18 +500,34 @@ int main(void)
         int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
         if (err == -EAGAIN) {
             LOG_DBG("No LoRa RX data yet");
+            display_string("No LoRa RX data yet");
         } else if (err < 0) {
             LOG_ERR("LoRa RX failed: %d", err);
-            lv_label_set_text_fmt(label, "LoRa RX failed: %d", err);
+            display_string("LoRa RX failed: %d", err);
         } else {
             LOG_INF("LoRa RX: %d bytes: %s", err, buf);
             LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
-            lv_label_set_text_fmt(label, "RSSI: %d, SNR: %d", RSSI, SNR);
+            display_string("RSSI: %d, SNR: %d", RSSI, SNR);
         }
-            lv_task_handler();
 
         k_sleep(K_SECONDS(3));
-
     }
     return 0;
+}
+
+
+void k_sys_fatal_error_handler(unsigned int reason,
+                               const struct arch_esf *esf) {
+  const struct gpio_dt_spec error_led =
+      GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+
+  LOG_PANIC();
+
+  while (1) {
+    LOG_ERR("I'M PANICKING");
+    gpio_pin_toggle_dt(&error_led);
+    k_busy_wait(500 * 1000);
+  }
+
+  k_fatal_halt(reason);
 }

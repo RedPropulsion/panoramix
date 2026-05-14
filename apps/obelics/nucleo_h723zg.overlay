@@ -6,6 +6,10 @@
 
 
 / {
+    chosen {
+        zephyr,display = &ssd1309;
+    };
+    
     rotary_encoder: rotary_encoder {
         compatible = "gpio-keys";
         encoder_s: encoder_switch {
@@ -128,7 +132,7 @@
     status = "okay";
     pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
     pinctrl-names = "default";
-
+    clock-frequency = <I2C_BITRATE_STANDARD>;
 
     gps: gps@21 {
         compatible = "u-blox,m10";
@@ -154,6 +158,4 @@
         com-invdir;
         prechargep = <0x22>;
     };
-
-
 };
