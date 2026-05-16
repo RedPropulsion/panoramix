@@ -13,7 +13,7 @@
 #include <zephyr/display/cfb.h>
 #include "sound.h"
 #include "udp_client.h"
-
+#include <cfb_font_templeos.h>
 #include <zephyr/drivers/i2c.h>
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -265,10 +265,11 @@ void i2c_scan_bus(const struct device *i2c_dev)
     LOG_INF("Scan complete");
 }
 
+char display_buff[64] = {0}; // 128x64/8= 16x8 chars max with 8x8 font, so 64 is a safe buffer size for formatted strings
 
 void display_string(const char *fmt, ...)
 {
-    char buf[64];  // adjust size as needed
+    char buf[64];
     int ret;
     
     va_list args;
@@ -276,8 +277,8 @@ void display_string(const char *fmt, ...)
     ret = vsnprintf(buf, sizeof(buf), fmt, args);
     va_end(args);
 
-    LOG_INF("Formatted string length: %d", ret);
-    LOG_INF("Formatted string: %s", buf);
+    // LOG_INF("Formatted string length: %d", ret);
+    // LOG_INF("Formatted string: %s", buf);
     
     cfb_framebuffer_clear(disp, false);  // clear buffer only
     ret = cfb_print(disp, buf, 0, 0);          // print at (0,0)
@@ -285,9 +286,64 @@ void display_string(const char *fmt, ...)
         LOG_ERR("Failed to print string: %d", ret);
         return;
     } else {
-        LOG_INF("String printed to framebuffer with return code: %d", ret);
+        // LOG_DBG("String printed to framebuffer with return code: %d", ret);
     }
     cfb_framebuffer_finalize(disp);       // WRITE to display
+}
+
+void update_row(uint8_t row, const char *fmt, ...)
+{
+    if (row >= 8) {
+        LOG_ERR("Row %d out of bounds", row);
+        return;
+    }
+
+    char buf[16]; // 16 chars max for one row with 8x8 font on 128x64 display
+    int ret;
+    
+
+    va_list args;
+    va_start(args, fmt);
+    ret = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    // LOG_INF("Formatted string length: %d", ret);
+    // LOG_INF("Formatted string: %s", buf);
+
+    if (ret >= 16) {
+        LOG_WRN("Formatted string truncated to fit row: %s", buf);
+    }
+
+    LOG_INF("Updating row %d: %s", row, buf);
+
+    memcpy((void *)(display_buff + row * 16), buf, sizeof(buf)); // Copy formatted string into the correct row of display_buff
+    // LOG_WRN("DISPLAY_BUFF: %s", display_buff);
+
+    // LOG_INF("Updated display_buff:");
+    // for (int i = 0; i < 8; i++) {
+    //     LOG_INF(" %d: %s", i, display_buff + i * 16);
+    // }
+    // OR
+    //cfb_print(disp,buf,0,row); // print at (0,row) but we don't save previous screen if we use display_string()
+    // idk if we actually need to maintain our own display_buff or if we can just call cfb_print()
+    
+    // cfb_framebuffer_clear(disp, false);  // clear buffer only
+    ret = cfb_print(disp, buf, 0, row*8);          // print at (0,0)
+    if (ret < 0) {
+        LOG_ERR("Failed to print string: %d", ret);
+        return;
+    } else {
+        // LOG_DBG("String printed to framebuffer with return code: %d", ret);
+    }
+    cfb_framebuffer_finalize(disp);       // WRITE to display
+}
+
+void clear_text()
+{
+    cfb_framebuffer_clear(disp, true);  // clear buffer and display
+    memset((void *)display_buff, 0, sizeof(display_buff));
+    cfb_framebuffer_finalize(disp);       // WRITE to display
+    return;
 }
 
 /* ------------------------------------------------------------------ *
@@ -298,6 +354,7 @@ int main(void)
      LOG_INF("Starting main()");
     int ret;
 
+    
     
 
     if (!device_is_ready(i2c_dev)) {
@@ -324,7 +381,6 @@ int main(void)
     LOG_DBG("Set Display format to 10");
    }
 
-
     struct display_capabilities caps;
     display_get_capabilities(disp, &caps);
     LOG_DBG("Display caps: %dx%d, format=%d", 
@@ -345,29 +401,25 @@ int main(void)
         LOG_ERR("Failed to turn off display blanking: %d", ret);
         return 0;
     }
+    display_string("test");
+    update_row(0, "Starting");
 
-    // cfb_print(disp, "Booting...", 0, 0);
     // cfb_framebuffer_finalize(disp);
 
-    display_string("Booting...");
 
+    // uint8_t width, height;
+    // uint8_t num_fonts = cfb_get_numof_fonts(disp);
 
-    uint8_t width, height;
-    uint8_t num_fonts = cfb_get_numof_fonts(disp);
+    // // Loop through available fonts to get their dimensions
+    // for (uint8_t i = 0; i < num_fonts; i++) {
+    //     cfb_get_font_size(disp, i, &width, &height);
+    //     // printk("Font Index %d: %dx%d pixels\n", i, width, height);
+    //     cfb_framebuffer_set_font(disp, i);
+    //     display_string("Font %d: %dx%d", i, width, height);
+    //     k_sleep(K_SECONDS(2));
+    // }
 
-    // Loop through available fonts to get their dimensions
-    for (uint8_t i = 0; i < num_fonts; i++) {
-        cfb_get_font_size(disp, i, &width, &height);
-        // printk("Font Index %d: %dx%d pixels\n", i, width, height);
-        cfb_framebuffer_set_font(disp, i);
-        display_string("Font %d: %dx%d", i, width, height);
-        k_sleep(K_SECONDS(2));
-    }
-
-    cfb_framebuffer_set_font(disp, 0);
-
-    
-    udp_client_init();
+    // cfb_framebuffer_set_font(disp, 0);
 
     /* Initialize LoRa device */
     if (!device_is_ready(lora_dev)) {
@@ -394,6 +446,8 @@ int main(void)
     int16_t RSSI;
     int8_t SNR;
 
+    update_row(1,"LoRa ok");
+
     /* Mount SD card */
     
     // LOG_INF("Initializing SD card");
@@ -419,8 +473,6 @@ int main(void)
     }
     sound_init(&buzzer);
 
-
-    
     
     /* LEDs */
     for (int i = 0; i < ARRAY_SIZE(leds); i++) {
@@ -432,6 +484,8 @@ int main(void)
         k_timer_init(&leds[i].timer, led_timer_handler, NULL);
         k_timer_start(&leds[i].timer, K_MSEC(intervals[i]), K_NO_WAIT);
     }
+
+    update_row(2, "LED,Sound OK");
 
     /* Encoder */
     if (!gpio_is_ready_dt(&enc_a) || !gpio_is_ready_dt(&enc_b) ||
@@ -451,7 +505,7 @@ int main(void)
     gpio_init_callback(&enc_sw_cb_data, encoder_handler, BIT(enc_sw.pin));
     gpio_add_callback(enc_sw.port, &enc_sw_cb_data);
 
-    
+
 
     /* B1 User button */
     if (!gpio_is_ready_dt(&user_btn)) {
@@ -465,14 +519,24 @@ int main(void)
     gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
     ret = gpio_add_callback(user_btn.port, &btn_cb_data);
 
+    update_row(3, "Buttons OK");
+
+    update_row(4, "UDP init");
+    udp_client_init();
+    update_row(5, "UDP Ok");
+
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
-    uint8_t tx_buf[] = "Hello LoRa!";
+    uint8_t tx_buf[] = "Hello from Obelics!";
     int lora_counter = 0;
     LOG_INF("Starting main loop...\n");
+    // display_string("Main loop");
+    update_row(5, "Init complete");
 
+    int row=0;
     while (1) {
-        display_string("Running main loop...");
+        // clear_text();
+        // display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
         if (device_is_ready(lora_dev)) {
             int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
@@ -496,19 +560,21 @@ int main(void)
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
 
+        
 
         int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
         if (err == -EAGAIN) {
             LOG_DBG("No LoRa RX data yet");
-            display_string("No LoRa RX data yet");
+            update_row(7, "No LoRa RX data");
         } else if (err < 0) {
             LOG_ERR("LoRa RX failed: %d", err);
-            display_string("LoRa RX failed: %d", err);
+            update_row(7, "LoRa RX failed: %d", err);
         } else {
             LOG_INF("LoRa RX: %d bytes: %s", err, buf);
             LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
-            display_string("RSSI: %d, SNR: %d", RSSI, SNR);
+            update_row(7, "RSSI: %d, SNR: %d", RSSI, SNR);
         }
+        row = (row + 1) % 8; // cycle through display rows for updates
 
         k_sleep(K_SECONDS(3));
     }
@@ -524,6 +590,7 @@ void k_sys_fatal_error_handler(unsigned int reason,
   LOG_PANIC();
 
   while (1) {
+    display_string("FATAL ERROR");
     LOG_ERR("I'M PANICKING");
     gpio_pin_toggle_dt(&error_led);
     k_busy_wait(500 * 1000);
