@@ -446,4 +446,3 @@ static DEVICE_API(sensor, ms5611_driver_api) = {
       POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &ms5611_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(MS5611_INIT)
-#endif
