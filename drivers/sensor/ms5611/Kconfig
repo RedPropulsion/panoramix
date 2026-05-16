@@ -2,13 +2,15 @@ config SENSOR_MS5611
 	bool "MS5611 barometric pressure and temperature sensor"
 	depends on DT_HAS_AMS_MS5611_ENABLED
 	select SPI
-	default y
+	select SPI_RTIO
+	select RTIO_OP_DELAY
+	default n
 
 if SENSOR_MS5611
 
 config SENSOR_MS5611_ASYNC
 	bool "MS5611 async API support"
-	depends on SENSOR_ASYNC_API && RTIO_OP_DELAY && SPI_RTIO
+	depends on SENSOR_ASYNC_API
 	default y
 	help
 	  Enable async/non-blocking sensor API for MS5611 using RTIO.
