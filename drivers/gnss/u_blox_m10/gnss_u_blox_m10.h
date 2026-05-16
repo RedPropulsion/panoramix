@@ -22,6 +22,20 @@ struct gps_position {
     uint8_t satellites;    /* number of satellites used */
     uint16_t hdop;         /* horizontal DOP * 100 */
     bool valid;
+
+    /* Extended data from NAV-PVT */
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    uint32_t nanosecond;
+    uint8_t time_valid;
+    int32_t speed_mm_s;    /* ground speed mm/s */
+    int32_t heading_1e5;   /* heading 1e-5 degrees */
+    uint32_t horiz_acc_mm;  /* horizontal accuracy mm */
+    uint32_t vert_acc_mm;   /* vertical accuracy mm */
 };
 
 /**

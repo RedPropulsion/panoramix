@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * u-blox M10 GNSS driver over I2C with non-blocking API
+ * Uses Zephyr's UBX parsing library
  */
 
 #include <string.h>
@@ -13,6 +14,7 @@
 #include <zephyr/device.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/modem/ubx/protocol.h>
 
 #include "gnss_u_blox_m10_i2c.h"
 #include "gnss_u_blox_m10.h"
@@ -20,11 +22,6 @@
 LOG_MODULE_REGISTER(gnss_u_blox_m10, CONFIG_GNSS_LOG_LEVEL);
 
 #define M10_GNSS_NODE DT_NODELABEL(gps)
-
-#define UBX_SYNC_1 0xB5
-#define UBX_SYNC_2 0x62
-#define UBX_CLASS_NAV 0x01
-#define UBX_MSG_NAV_PVT 0x07
 
 #define RING_BUFFER_SIZE 2
 
@@ -42,13 +39,22 @@ static struct m10_data m10_data_instance;
 
 static const struct gnss_u_blox_m10_i2c_config m10_i2c_config = {
     .i2c = I2C_DT_SPEC_GET(M10_GNSS_NODE),
-    .fix_rate_ms = 100, //TODO: make this configurable via Kconfig?
+    .fix_rate_ms = 40,
 };
 
 static int m10_wakeup(const struct i2c_dt_spec *i2c)
 {
-    uint8_t poll_msg[] = {0xB5, 0x62, 0x0A, 0x04, 0x00, 0x00, 0x0E, 0x34};
-    int ret = i2c_write_dt(i2c, poll_msg, sizeof(poll_msg));
+    uint8_t poll_msg[16];
+    int frame_len;
+
+    frame_len = ubx_frame_encode(UBX_CLASS_ID_MON, UBX_MSG_ID_MON_VER,
+                                  NULL, 0, poll_msg, sizeof(poll_msg));
+    if (frame_len < 0) {
+        LOG_ERR("Failed to encode MON-VER poll");
+        return frame_len;
+    }
+
+    int ret = i2c_write_dt(i2c, poll_msg, frame_len);
     if (ret < 0) {
         LOG_WRN("M10 wake-up poll failed: %d", ret);
     }
@@ -56,36 +62,64 @@ static int m10_wakeup(const struct i2c_dt_spec *i2c)
     return ret;
 }
 
-static int m10_send_cfg(const struct i2c_dt_spec *i2c, uint32_t key_id, uint32_t value)
+static int m10_send_cfg_msg(const struct i2c_dt_spec *i2c, uint8_t msg_class, uint8_t msg_id, uint8_t rate)
 {
-    uint8_t cfg_msg[] = {
-        0xB5, 0x62,             /* UBX sync chars */
-        0x06, 0x8A,             /* CFG-VALSET */
-        0x04, 0x00,             /* Payload length (4 bytes) */
-        0x00, 0x00, 0x00, 0x00, /* Key ID (will fill) */
-        0x00, 0x00, 0x00, 0x00, /* Value (will fill) */
-        0x00, 0x00              /* Checksum placeholder */
+    uint8_t cfg_msg[16];
+    int frame_len;
+
+    struct {
+        uint8_t msg_class;
+        uint8_t msg_id;
+        uint8_t rate;
+    } __packed payload = {
+        .msg_class = msg_class,
+        .msg_id = msg_id,
+        .rate = rate
     };
 
-    cfg_msg[8] = (key_id >> 0) & 0xFF;
-    cfg_msg[9] = (key_id >> 8) & 0xFF;
-    cfg_msg[10] = (key_id >> 16) & 0xFF;
-    cfg_msg[11] = (key_id >> 24) & 0xFF;
-
-    cfg_msg[12] = (value >> 0) & 0xFF;
-    cfg_msg[13] = (value >> 8) & 0xFF;
-    cfg_msg[14] = (value >> 16) & 0xFF;
-    cfg_msg[15] = (value >> 24) & 0xFF;
-
-    uint8_t ck_a = 0, ck_b = 0;
-    for (int i = 2; i < 16; i++) {
-        ck_a += cfg_msg[i];
-        ck_b += ck_a;
+    frame_len = ubx_frame_encode(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_MSG,
+                                  (uint8_t *)&payload, sizeof(payload),
+                                  cfg_msg, sizeof(cfg_msg));
+    if (frame_len < 0) {
+        LOG_ERR("Failed to encode CFG-MSG frame");
+        return frame_len;
     }
-    cfg_msg[16] = ck_a;
-    cfg_msg[17] = ck_b;
 
-    return i2c_write_dt(i2c, cfg_msg, 18);
+    LOG_DBG("CFG-MSG: class=0x%02X, id=0x%02X, rate=%d", msg_class, msg_id, rate);
+
+    return i2c_write_dt(i2c, cfg_msg, frame_len);
+}
+
+static int m10_send_cfg_valset(const struct i2c_dt_spec *i2c, uint32_t key_id, uint32_t value)
+{
+    uint8_t cfg_msg[32];
+    int frame_len;
+
+    struct {
+        uint8_t ver;
+        uint8_t layer;
+        uint16_t reserved;
+        uint32_t key;
+        uint32_t value;
+    } __packed payload = {
+        .ver = 0x00,
+        .layer = 0x00,
+        .reserved = 0x0000,
+        .key = key_id,
+        .value = value
+    };
+
+    frame_len = ubx_frame_encode(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_VAL_SET,
+                                  (uint8_t *)&payload, sizeof(payload),
+                                  cfg_msg, sizeof(cfg_msg));
+    if (frame_len < 0) {
+        LOG_ERR("Failed to encode CFG-VALSET frame");
+        return frame_len;
+    }
+
+    LOG_DBG("CFG-VALSET: key=0x%08X, value=%u", key_id, value);
+
+    return i2c_write_dt(i2c, cfg_msg, frame_len);
 }
 
 static int m10_configure(const struct device *dev)
@@ -94,7 +128,7 @@ static int m10_configure(const struct device *dev)
     const struct i2c_dt_spec *i2c = &m10_i2c_config.i2c;
     int ret;
 
-    LOG_DBG("Configuring M10 for 10Hz UBX-NAV-PVT on I2C");
+    LOG_DBG("Configuring M10 for 25Hz UBX-NAV-PVT on I2C");
 
     k_sleep(K_MSEC(2000));
 
@@ -105,35 +139,48 @@ static int m10_configure(const struct device *dev)
 
     k_sleep(K_MSEC(100));
 
-    /* Set measurement rate to 100ms (10Hz) */
-    ret = m10_send_cfg(i2c, 0x30210001, 100);
-    if (ret < 0) {
-        LOG_ERR("Failed to set rate: %s (%d)", strerror(-ret), ret);
-        return ret;
+    /* Set measurement rate to 40ms (25Hz) using CFG-RATE */
+    {
+        uint8_t rate_msg[16];
+        struct {
+            uint16_t meas_rate;
+            uint16_t nav_rate;
+            uint16_t time_ref;
+        } __packed payload = {
+            .meas_rate = 40,
+            .nav_rate = 40,
+            .time_ref = 40
+        };
+        int len = ubx_frame_encode(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RATE,
+                                    (uint8_t *)&payload, sizeof(payload),
+                                    rate_msg, sizeof(rate_msg));
+        if (len > 0) {
+            i2c_write_dt(i2c, rate_msg, len);
+        }
     }
-    k_sleep(K_MSEC(10));
+    k_sleep(K_MSEC(50));
 
-    /* Enable UBX-NAV-PVT on I2C */
-    ret = m10_send_cfg(i2c, 0x20910007, 1);
+    /* Enable UBX-NAV-PVT on I2C (DDC) - CFG-MSGOUT key */
+    ret = m10_send_cfg_valset(i2c, 0x20910007, 1);
     if (ret < 0) {
-        LOG_ERR("Failed to enable NAV-PVT: %s (%d)", strerror(-ret), ret);
-        return ret;
+        LOG_WRN("Failed to enable NAV-PVT: %d", ret);
     }
-    k_sleep(K_MSEC(10));
+    k_sleep(K_MSEC(50));
 
-    /* Disable NMEA on I2C to reduce traffic */
-    ret = m10_send_cfg(i2c, 0x10720002, 0);
+    /* Enable UBX protocol on I2C */
+    ret = m10_send_cfg_valset(i2c, 0x10720001, 1);
     if (ret < 0) {
-        LOG_WRN("Failed to disable NMEA: %s (%d)", strerror(-ret), ret);
+        LOG_WRN("Failed to enable UBX output: %d", ret);
     }
-    k_sleep(K_MSEC(10));
+    k_sleep(K_MSEC(50));
 
-    /* Enable UBX output on I2C */
-    ret = m10_send_cfg(i2c, 0x10720001, 1);
+    /* Disable NMEA protocol on I2C */
+    ret = m10_send_cfg_valset(i2c, 0x10720002, 0);
     if (ret < 0) {
-        LOG_WRN("Failed to enable UBX output: %s (%d)", strerror(-ret), ret);
+        LOG_WRN("Failed to disable NMEA: %d", ret);
     }
-    k_sleep(K_MSEC(10));
+    k_sleep(K_MSEC(50));
+
     k_sleep(K_MSEC(10));
 
     LOG_INF("M10 configuration complete");
@@ -202,44 +249,34 @@ static int m10_parse_nmea_gga(struct gps_position *pos, const char *sentence)
 
 static int m10_parse_ubx_nav_pvt(struct gps_position *pos, const uint8_t *data, size_t len)
 {
-    if (len < 92) {
+    if (len < sizeof(struct ubx_nav_pvt)) {
         return -EINVAL;
     }
 
-    const uint8_t *p = data;
+    const struct ubx_nav_pvt *pvt = (const struct ubx_nav_pvt *)data;
 
-    /* Skip: itow(4), year(2), month(1), day(1), hour(1), minute(1), second(1), valid(1), tacc(4), nano(4) */
-    p += 20;
+    pos->fix_type = pvt->fix_type;
+    pos->satellites = pvt->nav.num_sv;
+    pos->longitude = pvt->nav.longitude;
+    pos->latitude = pvt->nav.latitude;
+    pos->altitude_mm = pvt->nav.hmsl;
+    pos->hdop = pvt->nav.pdop;
 
-    pos->fix_type = *p++;
-    p++; /* flags */
-    p++; /* flags2 */
+    pos->year = pvt->time.year;
+    pos->month = pvt->time.month;
+    pos->day = pvt->time.day;
+    pos->hour = pvt->time.hour;
+    pos->minute = pvt->time.minute;
+    pos->second = pvt->time.second;
+    pos->nanosecond = pvt->time.nano;
+    pos->time_valid = (pvt->time.valid & 0x03);
 
-    pos->satellites = *p++;
-    p += 3; /* reserved */
+    pos->speed_mm_s = pvt->nav.ground_speed;
+    pos->heading_1e5 = pvt->nav.head_motion;
+    pos->horiz_acc_mm = pvt->nav.horiz_acc;
+    pos->vert_acc_mm = pvt->nav.vert_acc;
 
-    /* Longitude (4 bytes, 1e-7 deg) */
-    pos->longitude = (int32_t)((p[0] << 0) | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
-    p += 4;
-
-    /* Latitude (4 bytes, 1e-7 deg) */
-    pos->latitude = (int32_t)((p[0] << 0) | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
-    p += 4;
-
-    /* Height (4 bytes, mm) */
-    p += 4; /* height (ellipsoid) */
-
-    /* hMSL (4 bytes, mm) */
-    pos->altitude_mm = (int32_t)((p[0] << 0) | (p[1] << 8) | (p[2] << 16) | (p[3] << 24));
-    p += 4;
-
-    /* Skip: hAcc(4), vAcc(4), velN(4), velE(4), velD(4), gspeed(4), headMot(4), spdAcc(4), headAcc(4) */
-    p += 36;
-
-    /* HDOP (2 bytes, 1e-2) */
-    pos->hdop = (uint16_t)((p[0] << 0) | (p[1] << 8));
-
-    pos->valid = (pos->fix_type >= 3);
+    pos->valid = (pvt->fix_type >= 3) && (pvt->flags & UBX_NAV_PVT_FLAGS_GNSS_FIX_OK);
 
     return 0;
 }
@@ -254,18 +291,10 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
     uint8_t reg;
     int ret;
     uint8_t config_retry_count = 0;
-    uint32_t config_interval = 0;
 
-    LOG_INF("M10 acquisition thread started (10Hz)");
+    LOG_INF("M10 acquisition thread started (25Hz)");
 
     while (1) {
-        config_interval++;
-        if (config_interval >= 100) {
-            config_interval = 0;
-            LOG_DBG("M10: refreshing config...");
-            m10_configure(NULL);
-        }
-
         if (!data->configured && config_retry_count < 5) {
             ret = m10_configure(NULL);
             if (ret == 0) {
@@ -293,7 +322,6 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
         }
 
         uint16_t avail = (avail_buf[0] << 8) | avail_buf[1];
-        LOG_DBG("M10: %d bytes available", avail);
         if (avail == 0) {
             continue;
         }
@@ -320,9 +348,6 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
         if (ret == 0 && avail > 0) {
             ret = avail;
         }
-        LOG_DBG("M10: read %d bytes, first=%02x %02x %02x %02x", ret,
-                data->parse_buf[0], data->parse_buf[1],
-                data->parse_buf[2], data->parse_buf[3]);
 
         /* Parse UBX messages */
         bool found_ubx = false;
@@ -330,8 +355,7 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
         for (size_t i = 0; i < ret; i++) {
             uint8_t c = data->parse_buf[i];
 
-            if (c == UBX_SYNC_1 && (i + 1) < ret && data->parse_buf[i + 1] == UBX_SYNC_2) {
-                LOG_DBG("M10: found UBX sync at offset %zu", i);
+            if (c == UBX_PREAMBLE_SYNC_CHAR_1 && (i + 1) < ret && data->parse_buf[i + 1] == UBX_PREAMBLE_SYNC_CHAR_2) {
                 data->parse_len = 0;
                 data->awaiting_sync = true;
                 found_ubx = true;
@@ -341,29 +365,37 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
                 data->parse_buf[data->parse_len++] = c;
 
                 /* Full frame received? (sync + class + id + len + payload + checksum) */
-                if (data->parse_len >= 8) {
-                    uint16_t payload_len = data->parse_buf[6] | (data->parse_buf[7] << 8);
-                    size_t frame_len = 8 + payload_len + 2;
+                if (data->parse_len >= 6) {
+                    uint16_t payload_len = data->parse_buf[4] | (data->parse_buf[5] << 8);
+                    size_t frame_len = 6 + payload_len + 2;
+
+                    if (payload_len > 512) {
+                        data->awaiting_sync = false;
+                        data->parse_len = 0;
+                        continue;
+                    }
 
                     if (data->parse_len >= frame_len) {
-                        /* Check if it's NAV-PVT */
-                        if (data->parse_len >= 10 &&
-                            data->parse_buf[2] == UBX_CLASS_NAV &&
-                            data->parse_buf[3] == UBX_MSG_NAV_PVT) {
+                        if (data->parse_buf[2] == UBX_CLASS_ID_NAV &&
+                            data->parse_buf[3] == UBX_MSG_ID_NAV_PVT) {
 
                             struct gps_position pos;
                             memset(&pos, 0, sizeof(pos));
                             pos.cpu_timestamp_us = k_ticks_to_us_ceil32(k_cycle_get_32());
 
                             int parse_ret = m10_parse_ubx_nav_pvt(&pos, data->parse_buf + 6, payload_len);
-                            if (parse_ret != 0) {
-                                LOG_DBG("GPS: parse failed: %d", parse_ret);
-                            } else if (!pos.valid) {
-                                LOG_DBG("GPS: not valid yet (fix=%d, sats=%d)", pos.fix_type, pos.satellites);
-                            } else {
-                                LOG_DBG("GPS: lat=%d, lon=%d, alt=%dmm, sats=%d, fix=%d",
+                            if (parse_ret == 0 && pos.valid) {
+                                LOG_DBG_RATELIMIT_RATE(1000,"GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
+                                        "lat=%d, lon=%d, alt=%dmm | "
+                                        "sats=%d, fix=%d, hdop=%d | "
+                                        "speed=%dmm/s, heading=%d.%05d | "
+                                        "acc: horiz=%umm, vert=%umm",
+                                        pos.day, pos.month, pos.year,
+                                        pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
                                         pos.latitude, pos.longitude, pos.altitude_mm,
-                                        pos.satellites, pos.fix_type);
+                                        pos.satellites, pos.fix_type, pos.hdop,
+                                        pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
+                                        pos.horiz_acc_mm, pos.vert_acc_mm);
                                 atomic_t write_idx = atomic_get(&data->write_idx);
                                 data->ring_buffer[write_idx] = pos;
                                 atomic_inc(&data->write_idx);
@@ -372,6 +404,8 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
                                 }
                             }
                         }
+                        data->awaiting_sync = false;
+                        data->parse_len = 0;
                     }
                 }
             }
@@ -399,7 +433,7 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
                         pos.cpu_timestamp_us = k_ticks_to_us_ceil32(k_cycle_get_32());
 
                         if (m10_parse_nmea_gga(&pos, nmea_str) == 0 && pos.valid) {
-                            LOG_DBG("GPS NMEA: lat=%d, lon=%d, alt=%dmm, sats=%d, fix=%d",
+                            LOG_DBG_RATELIMIT("GPS NMEA: lat=%d, lon=%d, alt=%dmm, sats=%d, fix=%d",
                                     pos.latitude, pos.longitude, pos.altitude_mm,
                                     pos.satellites, pos.fix_type);
                             atomic_t write_idx = atomic_get(&data->write_idx);

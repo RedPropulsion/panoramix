@@ -560,15 +560,16 @@ int main(void)
     uint8_t tx_buf[] = "Hello from Obelics!";
     
 
-    LOG_INF("Starting main loop...\n");
+    LOG_INF("Starting main loop...");
     // display_string("Main loop");
     update_row(5, "Init complete");
+    k_sleep(K_MSEC(1000));
 
-
+    clear_text();
     int lora_counter = 0;
     int row=0;
     while (1) {
-        // clear_text();
+
         // display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
         if (device_is_ready(lora_dev)) {
@@ -608,6 +609,26 @@ int main(void)
             update_row(7, "RSSI: %d, SNR: %d", RSSI, SNR);
         }
         row = (row + 1) % 8; // cycle through display rows for updates
+
+
+        // LOG_DBG("GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
+        //                             "lat=%d, lon=%d, alt=%dmm | "
+        //                             "sats=%d, fix=%d, hdop=%d | "
+        //                             "speed=%dmm/s, heading=%d.%05d | "
+        //                             "acc: horiz=%umm, vert=%umm",
+        //                             pos.day, pos.month, pos.year,
+        //                             pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
+        //                             pos.latitude, pos.longitude, pos.altitude_mm,
+        //                             pos.satellites, pos.fix_type, pos.hdop,
+        //                             pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
+        //                             pos.horiz_acc_mm, pos.vert_acc_mm);
+
+        update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
+        update_row(1, "lat%d", pos.latitude);
+        update_row(2,"lon%d", pos.longitude);
+        update_row(3,"alt%.1f m", (int)pos.altitude_mm/1000.0);
+        update_row(4, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
+        // update_row(5,)
 
         k_sleep(K_SECONDS(3));
     }
