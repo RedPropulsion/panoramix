@@ -121,9 +121,11 @@
 
     pinctrl-0 = <&usart2_tx_pd5 &usart2_rx_pd6>;
     pinctrl-names = "default";
+    current-speed = <1000000>;
 
     st3215: servo {
         status = "okay";
         compatible = "waveshare,st3215";
+        servo-id = <1>;
     };
 };

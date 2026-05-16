@@ -4,3 +4,24 @@ compatible: "waveshare,st3215"
 
 include: base.yaml
 
+properties:
+  servo-id:
+    type: int
+    required: false
+    default: 1
+    description: Servo ID (1-253)
+  speed:
+    type: int
+    required: false
+    default: 0
+    description: Goal speed (0=maximum, 1-4095=limited)
+  time-ms:
+    type: int
+    required: false
+    default: 500
+    description: Goal time in milliseconds
+  dir-gpios:
+    type: phandle-array
+    required: false
+    description: Direction control GPIO (output high for TX, low for RX)
+
