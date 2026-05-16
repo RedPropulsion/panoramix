@@ -134,10 +134,11 @@
     pinctrl-names = "default";
     clock-frequency = <I2C_BITRATE_STANDARD>;
 
-    gps: gps@21 {
+    clock-frequency = <I2C_BITRATE_FAST>; /* 100kHz is too slow for M10, use 400kHz */
+
+    gps: gps@42 {
         compatible = "u-blox,m10";
-        /* 0x42 = 8-bit I2C address (0x21 = 7-bit). Default address for u-blox M10. */
-        reg = <0x21>;
+        reg = <0x42>;
         label = "GPS";
     };
 

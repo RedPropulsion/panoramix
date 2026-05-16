@@ -13,6 +13,7 @@
 #include <zephyr/display/cfb.h>
 #include "sound.h"
 #include "udp_client.h"
+#include "gnss_u_blox_m10.h"
 #include <cfb_font_templeos.h>
 #include <zephyr/drivers/i2c.h>
 
@@ -233,7 +234,6 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
 static const struct device *disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
 
 /*
-
 char buf[64];
 snprintf(buf, sizeof(buf), "Error: %d", err);
 
@@ -241,29 +241,43 @@ formats printf-style into buf, then use cfb_print(disp, buf, x, y) to display on
 */
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c2));
 
-void i2c_scan_bus(const struct device *i2c_dev)
-{
-    uint8_t first = 0x04;   // First valid I2C address
-    uint8_t last = 0x77;    // Last valid I2C address (7-bit)
-    
-    LOG_INF("Scanning I2C bus %s...", i2c_dev->name);
-    
-    for (uint8_t addr = first; addr <= last; addr++) {
-        struct i2c_msg msgs[1];
-        uint8_t dummy;
-        
-        // 0-byte write: send address only, check for ACK
-        msgs[0].buf = &dummy;
-        msgs[0].len = 0U;
-        msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
-        
-        if (i2c_transfer(i2c_dev, &msgs[0], 1, addr) == 0) {
-            LOG_INF("  Found device at 0x%02x", addr);
-        }
-    }
-    
-    LOG_INF("Scan complete");
-}
+// void i2c_scan_bus(const struct device *i2c_dev)
+// {
+//     uint8_t first = 0x04;
+//     uint8_t last = 0x77;
+
+//     LOG_INF("Scanning I2C bus %s...", i2c_dev->name);
+
+//     for (uint8_t addr = first; addr <= last; addr++) {
+//         struct i2c_msg msgs[1];
+//         uint8_t dummy;
+
+//         msgs[0].buf = &dummy;
+//         msgs[0].len = 0U;
+//         msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+
+//         if (i2c_transfer(i2c_dev, &msgs[0], 1, addr) == 0) {
+//             LOG_INF("  Found device at 0x%02x", addr);
+//         }
+//     }
+
+//     LOG_INF("Scan complete");
+
+//     LOG_INF("Testing M10 at 0x21...");
+//     uint8_t reg = 0xFD;
+//     uint8_t buf[2];
+//     struct i2c_msg msgs[2] = {
+//         { .buf = &reg, .len = 1, .flags = I2C_MSG_WRITE },
+//         { .buf = buf, .len = 2, .flags = I2C_MSG_READ | I2C_MSG_STOP },
+//     };
+//     int ret = i2c_transfer(i2c_dev, msgs, 2, 0x21);
+//     if (ret == 0) {
+//         uint16_t avail = (buf[0] << 8) | buf[1];
+//         LOG_INF("M10 available bytes: %d", avail);
+//     } else {
+//         LOG_ERR("M10 I2C read failed: %d", ret);
+//     }
+// }
 
 char display_buff[64] = {0}; // 128x64/8= 16x8 chars max with 8x8 font, so 64 is a safe buffer size for formatted strings
 
@@ -314,7 +328,7 @@ void update_row(uint8_t row, const char *fmt, ...)
         LOG_WRN("Formatted string truncated to fit row: %s", buf);
     }
 
-    LOG_INF("Updating row %d: %s", row, buf);
+    // LOG_DBG("Updating row %d: %s", row, buf);
 
     memcpy((void *)(display_buff + row * 16), buf, sizeof(buf)); // Copy formatted string into the correct row of display_buff
     // LOG_WRN("DISPLAY_BUFF: %s", display_buff);
@@ -345,6 +359,12 @@ void clear_text()
     cfb_framebuffer_finalize(disp);       // WRITE to display
     return;
 }
+
+/* ------------------------------------------------------------------ *
+ * GPS
+ * ------------------------------------------------------------------ */
+
+ 
 
 /* ------------------------------------------------------------------ *
  * Main
@@ -525,14 +545,27 @@ int main(void)
     udp_client_init();
     update_row(5, "UDP Ok");
 
+
+    struct gps_position pos;
+    if (gps_get_latest(&pos) == 0) {
+        LOG_INF("GPS: %s data \n\t\t %d sats\n\t\t %d fix type  ",pos.valid ? "Valid" : "Invalid", pos.satellites, pos.fix_type);
+        update_row(6, "GPS: %d sats", pos.satellites);
+    } else {
+        update_row(6, "GPS: No fix");
+    }
+
+
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
     uint8_t tx_buf[] = "Hello from Obelics!";
-    int lora_counter = 0;
+    
+
     LOG_INF("Starting main loop...\n");
     // display_string("Main loop");
     update_row(5, "Init complete");
 
+
+    int lora_counter = 0;
     int row=0;
     while (1) {
         // clear_text();
