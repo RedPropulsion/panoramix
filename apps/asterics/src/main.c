@@ -13,6 +13,7 @@
 LOG_MODULE_REGISTER(main);
 
 const struct device *ms5611 = DEVICE_DT_GET(DT_NODELABEL(mcu_ms5611));
+const struct device *ina219 = DEVICE_DT_GET(DT_NODELABEL(ina219_mcu));
 SENSOR_DT_READ_IODEV(mcu_ms5611_iodev, DT_NODELABEL(mcu_ms5611),
                      {
                          SENSOR_CHAN_PRESS,
@@ -71,25 +72,40 @@ int main(void) {
   const struct device *main_servo =
       DEVICE_DT_GET(DT_NODELABEL(servo_drogue_pwm));
 
-  while (1) {
-    LOG_INF("VADO A 0");
-    servo_set_position(main_servo, 0);
-    k_sleep(K_MSEC(5000));
-
-    LOG_INF("VADO A mid");
-    servo_set_position(main_servo, 135 * 1000);
-    k_sleep(K_MSEC(5000));
-
-    LOG_INF("VADO A MAX");
-    servo_set_position(main_servo, 270 * 1000);
-    k_sleep(K_MSEC(10000));
-  }
+  // while (1) {
+  //   LOG_INF("VADO A 0");
+  //   servo_set_position(main_servo, 0);
+  //   k_sleep(K_MSEC(5000));
+  //
+  //   LOG_INF("VADO A mid");
+  //   servo_set_position(main_servo, 135 * 1000);
+  //   k_sleep(K_MSEC(5000));
+  //
+  //   LOG_INF("VADO A MAX");
+  //   servo_set_position(main_servo, 270 * 1000);
+  //   k_sleep(K_MSEC(10000));
+  // }
   while (1) {
     int ret = sensor_read_async_mempool(&mcu_ms5611_iodev, &sensor_ctx,
                                         &mcu_ms5611_iodev);
     if (ret < 0) {
       LOG_ERR("Couldn't perform read: %s", strerror(-ret));
     }
+
+    ret = sensor_sample_fetch(ina219);
+    if (ret < 0) {
+      LOG_ERR("Couldn't retrieve sample: %s", strerror(-ret));
+      return 1;
+    }
+    struct sensor_value value;
+    ret = sensor_channel_get(ina219, SENSOR_CHAN_VOLTAGE, &value);
+    if (ret < 0) {
+      LOG_ERR("Couldn't retrieve sample: %s", strerror(-ret));
+      return 1;
+    }
+
+    LOG_INF("Voltage: %d.%d", value.val1, value.val2);
+
     k_sleep(K_MSEC(5000));
   }
 }
