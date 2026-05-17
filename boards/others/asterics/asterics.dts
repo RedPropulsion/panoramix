@@ -480,6 +480,9 @@
                 <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
                 <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
 
+    dmas = <&dmamux1 3 40 STM32_DMA_PERIPH_TX>,
+           <&dmamux1 4 39 STM32_DMA_PERIPH_RX>;
+
     ms5611_A: ms5611@0 {
         status = "okay";
 
