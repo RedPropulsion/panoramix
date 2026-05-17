@@ -141,6 +141,13 @@ static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
 
+
+/* ------------------------------------------------------------------ *
+ * Buzzer
+ * ------------------------------------------------------------------ */
+
+static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_NODELABEL(buzzer));
+
 /* ------------------------------------------------------------------ *
  * Button
  * ------------------------------------------------------------------ */
@@ -148,12 +155,29 @@ static const struct gpio_dt_spec user_btn =
     GPIO_DT_SPEC_GET(DT_NODELABEL(user_button), gpios);
 
 static struct gpio_callback btn_cb_data;
-static volatile uint8_t sound_requested = 0;
+static struct k_work button_work;
+static uint8_t demo = 0;
+
+void sound_finished_cb(void) {
+    LOG_INF("Sound playback finished");
+}
+
+static void button_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+    LOG_INF("Button work: toggling sound demo");
+    switch (demo++ % 4) {
+    case 0: play_sound(success_sound, success_sound_len, sound_finished_cb); break;
+    case 1: play_sound(alert_sound, alert_sound_len, sound_finished_cb); break;
+    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, sound_finished_cb); break;
+    case 3: play_sound(error_sound, error_sound_len, sound_finished_cb); break;
+    }
+}
 
 void button_handler(const struct device *dev, struct gpio_callback *cb,
                     uint32_t pins)
 {
-    sound_requested = 1;
+    k_work_submit(&button_work);
 }
 
 /* ------------------------------------------------------------------ *
@@ -190,15 +214,35 @@ static const struct gpio_dt_spec enc_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_
 static struct gpio_callback enc_a_cb_data;
 static struct gpio_callback enc_sw_cb_data;
 
-static volatile uint8_t encoder_event = 0;
-static volatile uint8_t encoder_sw_event = 0;
-
-void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    encoder_event = 1;
+void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+    static uint32_t last_time = 0;
+    uint32_t now = k_uptime_get_32();
+    if (now - last_time < 50) return;
+    last_time = now;
+    selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
+    LOG_DBG("Selected LED %d <---", selected_led);
 }
 
-void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    encoder_sw_event = 1;
+void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+    int phase_sw = gpio_pin_get_dt(&enc_sw);
+    int step = 10;
+    if (!phase_sw) {
+        static uint32_t last_time = 0;
+        uint32_t now = k_uptime_get_32();
+        if (now - last_time < 5) return;
+        last_time = now;
+        int phase_b = gpio_pin_get_dt(&enc_b);
+        if (phase_b) {
+            intervals[selected_led] += step;
+        } else {
+            if (intervals[selected_led] > step)
+                intervals[selected_led] -= step;
+        }
+        LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
+               selected_led, intervals[0], intervals[1], intervals[2]);
+    } else {
+        enc_sw_handler(dev, cb, pins);
+    }
 }
 
 /* ------------------------------------------------------------------ *
@@ -346,12 +390,13 @@ int main(void)
         return -ENODEV;
     }
 
-    static const struct pwm_dt_spec buzzer =
-        PWM_DT_SPEC_GET(DT_NODELABEL(buzzer));
+
     if (!device_is_ready(buzzer.dev)) {
         LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
+    k_work_init(&button_work, button_work_handler);
+    LOG_INF("Buzzer pointer %p", (void *)&buzzer);
     sound_init(&buzzer);
 
     
@@ -429,51 +474,7 @@ int main(void)
     display_clear_text();
     int lora_counter = 0;
     int row=0;
-    static uint8_t demo = 0;
     while (1) {
-
-        if (sound_requested) {
-            sound_requested = 0;
-            switch (demo++ % 4) {
-            case 0: play_sound(success_sound, success_sound_len, NULL); break;
-            case 1: play_sound(alert_sound, alert_sound_len, NULL); break;
-            case 2: play_sound(acknowledge_sound, acknowledge_sound_len, NULL); break;
-            case 3: play_sound(error_sound, error_sound_len, NULL); break;
-            }
-        }
-
-        if (encoder_sw_event) {
-            encoder_sw_event = 0;
-            static uint32_t last_time = 0;
-            uint32_t now = k_uptime_get_32();
-            if (now - last_time >= 50) {
-                last_time = now;
-                selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
-                LOG_DBG("Selected LED %d <---", selected_led);
-            }
-        }
-
-        if (encoder_event) {
-            encoder_event = 0;
-            int phase_sw = gpio_pin_get_dt(&enc_sw);
-            int step = 10;
-            if (!phase_sw) {
-                static uint32_t last_time = 0;
-                uint32_t now = k_uptime_get_32();
-                if (now - last_time >= 5) {
-                    last_time = now;
-                    int phase_b = gpio_pin_get_dt(&enc_b);
-                    if (phase_b) {
-                        intervals[selected_led] += step;
-                    } else {
-                        if (intervals[selected_led] > step)
-                            intervals[selected_led] -= step;
-                    }
-                    LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
-                           selected_led, intervals[0], intervals[1], intervals[2]);
-                }
-            }
-        }
 
         // display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
@@ -496,8 +497,6 @@ int main(void)
             pixels[2].g = 128;
         }
         toggle = !toggle;
-
-        // sound_process();
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
 
@@ -535,7 +534,7 @@ int main(void)
             display_update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
             display_update_row(1, "lat%d", pos.latitude);
             display_update_row(2,"lon%d", pos.longitude);
-            display_update_row(3,"alt%d", (int)(pos.altitude_mm));
+            display_update_row(3,"alt%d", (int)(pos.altitude_mm/1000));
             display_update_row(4,"h:%d v:%d", (int)(pos.horiz_acc_mm), (int)(pos.vert_acc_mm));   
             display_update_row(5, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
         } else {
