@@ -3,7 +3,10 @@
 
 #include <zephyr/drivers/i2c/rtio.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor_clock.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/rtio/rtio.h>
+#include <zephyr/rtio/sqe.h>
 #include <zephyr/sys/byteorder.h>
 
 LOG_MODULE_REGISTER(INA219_ASYNC, CONFIG_SENSOR_LOG_LEVEL);
@@ -198,16 +201,83 @@ static int ina219_channel_get(const struct device *dev,
 
 static int ina219_decoder_get_frame_count(const uint8_t *buffer,
                                           struct sensor_chan_spec chan_spec,
-                                          uint16_t *frame_count) {}
+                                          uint16_t *frame_count) {
+  const struct ina219_encoded_data *edata =
+      (const struct ina219_encoded_data *)buffer;
+
+  if (chan_spec.chan_idx != 0) {
+    return -ENOTSUP;
+  }
+
+  switch (chan_spec.chan_type) {
+  case SENSOR_CHAN_VOLTAGE:
+    *frame_count = edata->flags.has_voltage ? 1 : 0;
+    break;
+  case SENSOR_CHAN_CURRENT:
+    *frame_count = edata->flags.has_current ? 1 : 0;
+    break;
+  case SENSOR_CHAN_POWER:
+    *frame_count = edata->flags.has_power ? 1 : 0;
+    break;
+  default:
+    return -ENOTSUP;
+  }
+
+  return *frame_count > 0 ? 0 : -ENODATA;
+}
 
 static int ina219_decoder_get_size_info(struct sensor_chan_spec chan_spec,
                                         size_t *base_size, size_t *frame_size) {
+  switch (chan_spec.chan_type) {
+  case SENSOR_CHAN_VOLTAGE:
+  case SENSOR_CHAN_CURRENT:
+  case SENSOR_CHAN_POWER:
+    *base_size = sizeof(struct sensor_q31_data);
+    *frame_size = sizeof(struct sensor_q31_sample_data);
+    return 0;
+  default:
+    return -ENOTSUP;
+  }
 }
 
 static int ina219_decoder_decode(const uint8_t *buffer,
                                  struct sensor_chan_spec chan_spec,
                                  uint32_t *fit, uint16_t max_count,
-                                 void *data_out) {}
+                                 void *data_out) {
+  const struct ina219_encoded_data *edata =
+      (const struct ina219_encoded_data *)buffer;
+
+  if (*fit != 0 || max_count < 1) {
+    return -EINVAL;
+  }
+
+  struct sensor_q31_data *out = data_out;
+
+  out->header.base_timestamp_ns = edata->header.timestamp;
+  out->header.reading_count = 1;
+  // TODO: adjust shift
+  out->shift = 15;
+
+  double value;
+
+  switch (chan_spec.chan_type) {
+  case SENSOR_CHAN_VOLTAGE:
+    if (!edata->flags.has_voltage) {
+      return -ENODATA;
+    }
+
+    uint16_t v_bus = INA219_VBUS_GET(sys_get_be16(edata->rx_buf_voltage));
+    value = v_bus * INA219_V_BUS_MUL;
+    break;
+  default:
+    return -EINVAL;
+  }
+
+  out->readings[0].value = (value * (INT64_C(1) << (31 - out->shift)));
+
+  *fit = 1;
+  return 1;
+}
 
 SENSOR_DECODER_API_DT_DEFINE() = {
     .get_frame_count = ina219_decoder_get_frame_count,
@@ -222,8 +292,325 @@ int ina219_get_decoder(const struct device *dev,
   return 0;
 }
 
+static void ina219_readings_cb(struct rtio *ctx, const struct rtio_sqe *sqe,
+                               int result, void *arg) {
+  struct rtio_iodev_sqe *iodev_sqe = (struct rtio_iodev_sqe *)arg;
+
+  // Drain CQEs
+  struct rtio_cqe *cqe;
+  int err = result;
+  do {
+    cqe = rtio_cqe_consume(ctx);
+    if (cqe) {
+      if (!err)
+        err = cqe->result;
+      rtio_cqe_release(ctx, cqe);
+    }
+  } while (cqe);
+
+  if (err) {
+    rtio_iodev_sqe_err(iodev_sqe, err);
+  } else {
+    rtio_iodev_sqe_ok(iodev_sqe, 0);
+  }
+}
+
+// This callaback needs to be invoked after a status read operation, where it
+// loops by creating delayed sequences which continuosly fetch and check the
+// sensor status. Once the sensor is ready, it submits a read sequence.
+static void ina219_check_ready_cb(struct rtio *ctx, const struct rtio_sqe *sqe,
+                                  int result, void *arg) {
+  struct rtio_iodev_sqe *iodev_sqe = (struct rtio_iodev_sqe *)arg;
+  struct device *dev = sqe->userdata;
+  const struct ina219_config *cfg = dev->config;
+
+  struct ina219_encoded_data *edata;
+  int32_t buf_len;
+
+  rtio_sqe_rx_buf(iodev_sqe, sizeof(struct ina219_encoded_data),
+                  sizeof(struct ina219_encoded_data), (uint8_t **)&edata,
+                  &buf_len);
+
+  // Drain CQEs
+  struct rtio_cqe *cqe;
+  int err = result;
+  do {
+    cqe = rtio_cqe_consume(ctx);
+    if (cqe) {
+      if (!err)
+        err = cqe->result;
+      rtio_cqe_release(ctx, cqe);
+    }
+  } while (cqe);
+
+  if (err) {
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+
+  uint16_t status = sys_get_be16(edata->rx_buf);
+
+  if (!(INA219_CNVR_RDY(status))) {
+    struct rtio_sqe *current_sqe = rtio_sqe_acquire(ctx);
+    if (!current_sqe) {
+      rtio_sqe_drop_all(ctx);
+      rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+      return;
+    }
+
+    rtio_sqe_prep_delay(current_sqe, K_USEC(INA219_WAIT_MSR_RETRY), NULL);
+    current_sqe->flags |= RTIO_SQE_CHAINED;
+
+    /* prep your async I2C read of INA219_REG_V_BUS into poll->status_buf */
+    ina219_prep_reg_read_rtio_async(&cfg->bus, INA219_REG_V_BUS, edata->rx_buf,
+                                    &current_sqe);
+    current_sqe->flags |= RTIO_SQE_CHAINED;
+
+    current_sqe = rtio_sqe_acquire(cfg->bus.rtio.ctx);
+    if (!current_sqe) {
+      rtio_sqe_drop_all(cfg->bus.rtio.ctx);
+      rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+      return;
+    }
+    rtio_sqe_prep_callback_no_cqe(current_sqe, ina219_check_ready_cb, iodev_sqe,
+                                  dev);
+    rtio_submit(cfg->bus.rtio.ctx, 0);
+    return;
+  }
+
+  if (INA219_OVF_STATUS(status)) {
+    LOG_WRN("Power and/or Current calculations are out of range.");
+  }
+
+  struct rtio_sqe *current_sqe = NULL;
+
+  if (edata->flags.has_voltage) {
+    int ret = ina219_prep_reg_read_rtio_async(
+        &cfg->bus, INA219_REG_V_BUS, edata->rx_buf_voltage, &current_sqe);
+    if (ret < 0) {
+      LOG_ERR("Could not perform voltage reading");
+      rtio_iodev_sqe_err(iodev_sqe, ret);
+      return;
+    }
+    current_sqe->flags |= RTIO_SQE_CHAINED;
+  }
+
+  if (edata->flags.has_current) {
+    int ret = ina219_prep_reg_read_rtio_async(
+        &cfg->bus, INA219_REG_CURRENT, edata->rx_buf_current, &current_sqe);
+    if (ret < 0) {
+      LOG_ERR("Could not perform current reading");
+      rtio_iodev_sqe_err(iodev_sqe, ret);
+      return;
+    }
+    current_sqe->flags |= RTIO_SQE_CHAINED;
+  }
+
+  if (edata->flags.has_power) {
+    int ret = ina219_prep_reg_read_rtio_async(
+        &cfg->bus, INA219_REG_POWER, edata->rx_buf_power, &current_sqe);
+    if (ret < 0) {
+      LOG_ERR("Could not perform power reading");
+      rtio_iodev_sqe_err(iodev_sqe, ret);
+      return;
+    }
+    current_sqe->flags |= RTIO_SQE_CHAINED;
+  }
+
+  if (current_sqe) {
+    current_sqe = rtio_sqe_acquire(cfg->bus.rtio.ctx);
+    if (!current_sqe) {
+      rtio_sqe_drop_all(cfg->bus.rtio.ctx);
+      rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+      return;
+    }
+
+    rtio_sqe_prep_callback_no_cqe(current_sqe, ina219_readings_cb, iodev_sqe,
+                                  NULL);
+
+    rtio_submit(cfg->bus.rtio.ctx, 0);
+    return;
+  }
+
+  rtio_iodev_sqe_err(iodev_sqe, -ENODATA);
+}
+
+// This callaback needs to be invoked after a status read operation, where it
+// sets the status bit which triggers measurement.
+static void ina219_trigger_measurement_cb(struct rtio *ctx,
+                                          const struct rtio_sqe *sqe,
+                                          int result, void *arg) {
+  struct rtio_iodev_sqe *iodev_sqe = (struct rtio_iodev_sqe *)arg;
+  struct device *dev = sqe->userdata;
+  struct ina219_config *cfg = (struct ina219_config *)dev->config;
+  struct ina219_data *data = (struct ina219_data *)dev->data;
+
+  struct ina219_encoded_data *edata;
+  int32_t buf_len;
+
+  rtio_sqe_rx_buf(iodev_sqe, sizeof(struct ina219_encoded_data),
+                  sizeof(struct ina219_encoded_data), (uint8_t **)&edata,
+                  &buf_len);
+
+  // Drain CQEs
+  struct rtio_cqe *cqe;
+  int err = result;
+  do {
+    cqe = rtio_cqe_consume(ctx);
+    if (cqe) {
+      if (!err)
+        err = cqe->result;
+      rtio_cqe_release(ctx, cqe);
+    }
+  } while (cqe);
+
+  if (err) {
+    rtio_iodev_sqe_err(iodev_sqe, err);
+    return;
+  }
+
+  uint16_t status = sys_get_be16(edata->rx_buf);
+  status = (status & ~INA219_MODE_MASK) | INA219_MODE_NORMAL;
+
+  struct rtio_sqe *current_sqe;
+
+  int ret = ina219_prep_reg_write_rtio_async(&cfg->bus, INA219_REG_CONF, status,
+                                             &current_sqe);
+  if (ret < 0) {
+    LOG_ERR("Failed to set device config");
+    rtio_iodev_sqe_err(iodev_sqe, ret);
+    return;
+  }
+  current_sqe->flags |= RTIO_SQE_CHAINED;
+
+  current_sqe = rtio_sqe_acquire(cfg->bus.rtio.ctx);
+  if (!current_sqe) {
+    LOG_ERR("Failed to acquire SQE");
+    rtio_sqe_drop_all(cfg->bus.rtio.ctx);
+    rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+  }
+  rtio_sqe_prep_delay(current_sqe, K_USEC(data->msr_delay), NULL);
+  current_sqe->flags |= RTIO_SQE_CHAINED;
+
+  ret = ina219_prep_reg_read_rtio_async(&cfg->bus, INA219_REG_V_BUS,
+                                        edata->rx_buf, &current_sqe);
+  if (ret < 0) {
+    LOG_ERR("Failed to read device status");
+    rtio_iodev_sqe_err(iodev_sqe, ret);
+    return;
+  }
+  current_sqe->flags |= RTIO_SQE_CHAINED;
+
+  struct rtio_sqe *complete_sqe = rtio_sqe_acquire(cfg->bus.rtio.ctx);
+  if (!complete_sqe) {
+    LOG_ERR("Failed to acquire completion SQE");
+    rtio_sqe_drop_all(cfg->bus.rtio.ctx);
+    rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+    return;
+  }
+
+  rtio_sqe_prep_callback_no_cqe(complete_sqe, ina219_check_ready_cb, iodev_sqe,
+                                (void *)dev);
+
+  rtio_submit(cfg->bus.rtio.ctx, 0);
+}
+
 static void ina219_submit(const struct device *dev,
-                          struct rtio_iodev_sqe *iodev_sqe) {}
+                          struct rtio_iodev_sqe *iodev_sqe) {
+  const struct sensor_read_config *read_cfg = iodev_sqe->sqe.iodev->data;
+  struct ina219_config *cfg = (struct ina219_config *)dev->config;
+
+  // Validate requested channels
+  const struct sensor_chan_spec *const channels = read_cfg->channels;
+  const size_t num_channels = read_cfg->count;
+
+  for (size_t i = 0; i < num_channels; i++) {
+    switch (channels[i].chan_type) {
+    case SENSOR_CHAN_VOLTAGE:
+    case SENSOR_CHAN_POWER:
+    case SENSOR_CHAN_CURRENT:
+    case SENSOR_CHAN_ALL:
+      break;
+    default:
+      rtio_iodev_sqe_err(iodev_sqe, -ENOTSUP);
+      return;
+    }
+  }
+
+  // Init an rx buffer for rtio operations
+  static const uint32_t min_buf_len = sizeof(struct ina219_encoded_data);
+  struct ina219_encoded_data *edata;
+  uint32_t buf_len;
+
+  int ret;
+  ret = rtio_sqe_rx_buf(iodev_sqe, min_buf_len, min_buf_len, (uint8_t **)&edata,
+                        &buf_len);
+  if (ret < 0 || buf_len < min_buf_len || !edata) {
+    LOG_ERR("Failed to get a read buffer of size %u bytes", min_buf_len);
+    rtio_iodev_sqe_err(iodev_sqe, ret);
+    return;
+  }
+
+  edata->flags.has_voltage = 0;
+  edata->flags.has_current = 0;
+  edata->flags.has_power = 0;
+
+  for (size_t i = 0; i < num_channels; i++) {
+    switch (channels[i].chan_type) {
+    case SENSOR_CHAN_VOLTAGE:
+      edata->flags.has_voltage = 1;
+      break;
+    case SENSOR_CHAN_CURRENT:
+      edata->flags.has_current = 1;
+      break;
+    case SENSOR_CHAN_POWER:
+      edata->flags.has_power = 1;
+      break;
+    case SENSOR_CHAN_ALL:
+      edata->flags.has_voltage = 1;
+      edata->flags.has_current = 1;
+      edata->flags.has_power = 1;
+      break;
+    default:
+      break;
+    }
+  }
+
+  // Get hardware timestamp
+  uint64_t cycles;
+  ret = sensor_clock_get_cycles(&cycles);
+  if (ret < 0) {
+    LOG_ERR("Failed to get sensor clock cycles");
+    rtio_iodev_sqe_err(iodev_sqe, ret);
+    return;
+  }
+  edata->header.timestamp = sensor_clock_cycles_to_ns(cycles);
+
+  // Trigger measurement
+  struct rtio_sqe *read_conf_sqe;
+
+  ret = ina219_prep_reg_read_rtio_async(&cfg->bus, INA219_REG_CONF,
+                                        edata->rx_buf, &read_conf_sqe);
+  if (ret < 0) {
+    LOG_ERR("Could not perform register read");
+    rtio_iodev_sqe_err(iodev_sqe, ret);
+    return;
+  }
+  read_conf_sqe->flags |= RTIO_SQE_CHAINED;
+
+  struct rtio_sqe *complete_sqe = rtio_sqe_acquire(cfg->bus.rtio.ctx);
+  if (!complete_sqe) {
+    LOG_ERR("Failed to acquire completion SQE");
+    rtio_sqe_drop_all(cfg->bus.rtio.ctx);
+    rtio_iodev_sqe_err(iodev_sqe, -ENOMEM);
+    return;
+  }
+
+  rtio_sqe_prep_callback_no_cqe(complete_sqe, ina219_trigger_measurement_cb,
+                                iodev_sqe, (void *)dev);
+
+  rtio_submit(cfg->bus.rtio.ctx, 0);
+}
 
 static DEVICE_API(sensor, ina219_api) = {.sample_fetch = ina219_sample_fetch,
                                          .channel_get = ina219_channel_get,
