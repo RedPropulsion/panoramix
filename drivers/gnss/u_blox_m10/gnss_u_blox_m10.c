@@ -417,19 +417,19 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
 
                             int parse_ret = m10_parse_ubx_nav_pvt(&pos, data->parse_buf + 6, payload_len);
                             if (parse_ret == 0 && pos.valid) {
-                                LOG_DBG_RATELIMIT_RATE(1000,"GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
-                                        "lat=%d, lon=%d, alt=%dmm | "
-                                        "sats=%d, fix=%d, hdop=%d | "
-                                        "speed=%dmm/s, heading=%d.%05d | "
-                                        "acc: horiz=%umm, vert=%umm | "
-                                        "gps_ns=%llu, cpu_us=%u",
-                                        pos.day, pos.month, pos.year,
-                                        pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
-                                        pos.latitude, pos.longitude, pos.altitude_mm,
-                                        pos.satellites, pos.fix_type, pos.hdop,
-                                        pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
-                                        pos.horiz_acc_mm, pos.vert_acc_mm,
-                                        pos.gps_timestamp_ns, pos.cpu_timestamp_us);
+                                // LOG_DBG_RATELIMIT_RATE(1000,"GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
+                                //         "lat=%d, lon=%d, alt=%dmm | "
+                                //         "sats=%d, fix=%d, hdop=%d | "
+                                //         "speed=%dmm/s, heading=%d.%05d | "
+                                //         "acc: horiz=%umm, vert=%umm | "
+                                //         "gps_ns=%llu, cpu_us=%u",
+                                //         pos.day, pos.month, pos.year,
+                                //         pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
+                                //         pos.latitude, pos.longitude, pos.altitude_mm,
+                                //         pos.satellites, pos.fix_type, pos.hdop,
+                                //         pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
+                                //         pos.horiz_acc_mm, pos.vert_acc_mm,
+                                //         pos.gps_timestamp_ns, pos.cpu_timestamp_us);
                                 atomic_t write_idx = atomic_get(&data->write_idx);
                                 data->ring_buffer[write_idx] = pos;
                                 atomic_inc(&data->write_idx);
