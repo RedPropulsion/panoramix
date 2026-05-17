@@ -136,9 +136,10 @@
 
     clock-frequency = <I2C_BITRATE_FAST>; /* 100kHz is too slow for M10, use 400kHz */
 
-    dmas = <&dmamux1 0 34 0x140>,
-       <&dmamux1 1 35 0x141>;
-    dma-names = "rx", "tx";
+    dmas = <&dmamux1 0 36 STM32_DMA_PERIPH_TX>,
+           <&dmamux1 1 35 STM32_DMA_PERIPH_RX>;
+
+    dma-names = "tx", "rx";
 
     gps: gps@42 {
         compatible = "u-blox,m10";
