@@ -10,7 +10,7 @@ LOG_MODULE_REGISTER(display, LOG_LEVEL_INF);
 #include "display.h"
 
 static const struct device *disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
-static char display_buff[64] = {0};
+static char display_buff[128] = {0};
 
 int display_init(void)
 {
