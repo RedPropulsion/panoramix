@@ -1,0 +1,7 @@
+config SENSOR_INA219_RTIO
+	bool "MS5611 barometric pressure and temperature sensor"
+	depends on DT_HAS_TI_INA219_RTIO_ENABLED
+	select I2C
+	select I2C_RTIO
+	default n
+

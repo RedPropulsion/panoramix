@@ -1,3 +1,4 @@
 if SENSOR
+rsource "ina219-rtio/Kconfig"
 rsource "ms5611/Kconfig"
 endif # SENSOR
