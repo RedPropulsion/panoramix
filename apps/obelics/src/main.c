@@ -626,7 +626,7 @@ int main(void)
         update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
         update_row(1, "lat%d", pos.latitude);
         update_row(2,"lon%d", pos.longitude);
-        update_row(3,"alt%.1f m", (int)pos.altitude_mm/1000.0);
+        update_row(3,"alt%d m", (int)(pos.altitude_mm/1000));
         update_row(4, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
         // update_row(5,)
 

@@ -271,6 +271,18 @@ static int m10_parse_ubx_nav_pvt(struct gps_position *pos, const uint8_t *data, 
     pos->nanosecond = pvt->time.nano;
     pos->time_valid = (pvt->time.valid & 0x03);
 
+    pos->itow_ms = pvt->time.itow;
+    if (pos->time_valid & 0x03) {
+        int64_t nano = pvt->time.nano;
+        if (nano < 0) {
+            pos->gps_timestamp_ns = ((uint64_t)pvt->time.itow * 1000000ULL) + (uint64_t)nano;
+        } else {
+            pos->gps_timestamp_ns = ((uint64_t)pvt->time.itow * 1000000ULL) + (uint64_t)nano;
+        }
+    } else {
+        pos->gps_timestamp_ns = 0;
+    }
+
     pos->speed_mm_s = pvt->nav.ground_speed;
     pos->heading_1e5 = pvt->nav.head_motion;
     pos->horiz_acc_mm = pvt->nav.horiz_acc;
@@ -389,13 +401,15 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
                                         "lat=%d, lon=%d, alt=%dmm | "
                                         "sats=%d, fix=%d, hdop=%d | "
                                         "speed=%dmm/s, heading=%d.%05d | "
-                                        "acc: horiz=%umm, vert=%umm",
+                                        "acc: horiz=%umm, vert=%umm | "
+                                        "gps_ns=%llu, cpu_us=%u",
                                         pos.day, pos.month, pos.year,
                                         pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
                                         pos.latitude, pos.longitude, pos.altitude_mm,
                                         pos.satellites, pos.fix_type, pos.hdop,
                                         pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
-                                        pos.horiz_acc_mm, pos.vert_acc_mm);
+                                        pos.horiz_acc_mm, pos.vert_acc_mm,
+                                        pos.gps_timestamp_ns, pos.cpu_timestamp_us);
                                 atomic_t write_idx = atomic_get(&data->write_idx);
                                 data->ring_buffer[write_idx] = pos;
                                 atomic_inc(&data->write_idx);

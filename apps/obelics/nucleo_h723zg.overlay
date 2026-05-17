@@ -81,6 +81,7 @@
     };
 };
 
+/* DMA - disabled for now, I2C DMA not working on STM32H723 */
 &dma1 {
     status = "okay";
 };
@@ -132,9 +133,12 @@
     status = "okay";
     pinctrl-0 = <&i2c2_scl_pf1 &i2c2_sda_pf0>;
     pinctrl-names = "default";
-    clock-frequency = <I2C_BITRATE_STANDARD>;
 
     clock-frequency = <I2C_BITRATE_FAST>; /* 100kHz is too slow for M10, use 400kHz */
+
+    dmas = <&dmamux1 0 34 0x140>,
+       <&dmamux1 1 35 0x141>;
+    dma-names = "rx", "tx";
 
     gps: gps@42 {
         compatible = "u-blox,m10";

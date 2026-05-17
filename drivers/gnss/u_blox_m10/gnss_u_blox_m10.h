@@ -15,6 +15,7 @@
 
 struct gps_position {
     uint32_t cpu_timestamp_us;
+    uint64_t gps_timestamp_ns;
     int32_t latitude;      /* 1e-7 degrees */
     int32_t longitude;     /* 1e-7 degrees */
     int32_t altitude_mm;   /* mm above mean sea level */
@@ -36,6 +37,7 @@ struct gps_position {
     int32_t heading_1e5;   /* heading 1e-5 degrees */
     uint32_t horiz_acc_mm;  /* horizontal accuracy mm */
     uint32_t vert_acc_mm;   /* vertical accuracy mm */
+    uint32_t itow_ms;       /* GPS time of week in milliseconds */
 };
 
 /**
