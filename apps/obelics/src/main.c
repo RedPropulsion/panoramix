@@ -623,13 +623,16 @@ int main(void)
         //                             pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
         //                             pos.horiz_acc_mm, pos.vert_acc_mm);
 
-        update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
-        update_row(1, "lat%d", pos.latitude);
-        update_row(2,"lon%d", pos.longitude);
-        update_row(3,"alt%d m", (int)(pos.altitude_mm/1000));
-        update_row(4, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
-        // update_row(5,)
-
+        ret = gps_get_latest(&pos);
+        if (ret == 0 && pos.valid) {
+            update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
+            update_row(1, "lat%d", pos.latitude);
+            update_row(2,"lon%d", pos.longitude);
+            update_row(3,"alt%d m", (int)(pos.altitude_mm/1000));
+            update_row(4, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
+        } else {
+            update_row(0, "GPS: No fix");
+        }
         k_sleep(K_SECONDS(3));
     }
     return 0;

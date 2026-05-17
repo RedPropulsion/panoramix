@@ -64,37 +64,35 @@ static int m10_wakeup(const struct i2c_dt_spec *i2c)
 
 static int m10_send_cfg_msg(const struct i2c_dt_spec *i2c, uint8_t msg_class, uint8_t msg_id, uint8_t rate)
 {
-    uint8_t cfg_msg[16];
-    int frame_len;
+    uint8_t cfg_msg[12];
 
-    struct {
-        uint8_t msg_class;
-        uint8_t msg_id;
-        uint8_t rate;
-    } __packed payload = {
-        .msg_class = msg_class,
-        .msg_id = msg_id,
-        .rate = rate
-    };
+    cfg_msg[0] = 0xB5;
+    cfg_msg[1] = 0x62;
+    cfg_msg[2] = 0x06;
+    cfg_msg[3] = 0x01;
+    cfg_msg[4] = 3;  /* payload length */
+    cfg_msg[5] = 0;
+    cfg_msg[6] = msg_class;
+    cfg_msg[7] = msg_id;
+    cfg_msg[8] = rate;  /* rate for current destination (I2C) */
 
-    frame_len = ubx_frame_encode(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_MSG,
-                                  (uint8_t *)&payload, sizeof(payload),
-                                  cfg_msg, sizeof(cfg_msg));
-    if (frame_len < 0) {
-        LOG_ERR("Failed to encode CFG-MSG frame");
-        return frame_len;
+    uint8_t ck_a = 0, ck_b = 0;
+    for (int i = 2; i < 9; i++) {
+        ck_a += cfg_msg[i];
+        ck_b += ck_a;
     }
+    cfg_msg[9] = ck_a;
+    cfg_msg[10] = ck_b;
+    cfg_msg[11] = 0;
 
     LOG_DBG("CFG-MSG: class=0x%02X, id=0x%02X, rate=%d", msg_class, msg_id, rate);
 
-    return i2c_write_dt(i2c, cfg_msg, frame_len);
+    return i2c_write_dt(i2c, cfg_msg, 11);
 }
 
 static int m10_send_cfg_valset(const struct i2c_dt_spec *i2c, uint32_t key_id, uint32_t value)
 {
-    uint8_t cfg_msg[32];
-    int frame_len;
-
+    uint8_t cfg_msg[18];
     struct {
         uint8_t ver;
         uint8_t layer;
@@ -109,17 +107,26 @@ static int m10_send_cfg_valset(const struct i2c_dt_spec *i2c, uint32_t key_id, u
         .value = value
     };
 
-    frame_len = ubx_frame_encode(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_VAL_SET,
-                                  (uint8_t *)&payload, sizeof(payload),
-                                  cfg_msg, sizeof(cfg_msg));
-    if (frame_len < 0) {
-        LOG_ERR("Failed to encode CFG-VALSET frame");
-        return frame_len;
+    cfg_msg[0] = 0xB5;
+    cfg_msg[1] = 0x62;
+    cfg_msg[2] = 0x06;
+    cfg_msg[3] = 0x8A;
+    cfg_msg[4] = sizeof(payload) & 0xFF;
+    cfg_msg[5] = (sizeof(payload) >> 8) & 0xFF;
+
+    memcpy(&cfg_msg[6], &payload, sizeof(payload));
+
+    uint8_t ck_a = 0, ck_b = 0;
+    for (int i = 2; i < 6 + (int)sizeof(payload); i++) {
+        ck_a += cfg_msg[i];
+        ck_b += ck_a;
     }
+    cfg_msg[6 + sizeof(payload)] = ck_a;
+    cfg_msg[6 + sizeof(payload) + 1] = ck_b;
 
     LOG_DBG("CFG-VALSET: key=0x%08X, value=%u", key_id, value);
 
-    return i2c_write_dt(i2c, cfg_msg, frame_len);
+    return i2c_write_dt(i2c, cfg_msg, 8 + sizeof(payload));
 }
 
 static int m10_configure(const struct device *dev)
@@ -141,44 +148,57 @@ static int m10_configure(const struct device *dev)
 
     /* Set measurement rate to 40ms (25Hz) using CFG-RATE */
     {
-        uint8_t rate_msg[16];
-        struct {
-            uint16_t meas_rate;
-            uint16_t nav_rate;
-            uint16_t time_ref;
-        } __packed payload = {
-            .meas_rate = 40,
-            .nav_rate = 40,
-            .time_ref = 40
-        };
-        int len = ubx_frame_encode(UBX_CLASS_ID_CFG, UBX_MSG_ID_CFG_RATE,
-                                    (uint8_t *)&payload, sizeof(payload),
-                                    rate_msg, sizeof(rate_msg));
-        if (len > 0) {
-            i2c_write_dt(i2c, rate_msg, len);
+        uint8_t rate_msg[14];
+        rate_msg[0] = 0xB5;
+        rate_msg[1] = 0x62;
+        rate_msg[2] = 0x06;
+        rate_msg[3] = 0x08;
+        rate_msg[4] = 6;  /* payload length */
+        rate_msg[5] = 0;
+        rate_msg[6] = 40 & 0xFF;
+        rate_msg[7] = (40 >> 8) & 0xFF;
+        rate_msg[8] = 40 & 0xFF;
+        rate_msg[9] = (40 >> 8) & 0xFF;
+        rate_msg[10] = 40 & 0xFF;
+        rate_msg[11] = (40 >> 8) & 0xFF;
+
+        uint8_t ck_a = 0, ck_b = 0;
+        for (int i = 2; i < 12; i++) {
+            ck_a += rate_msg[i];
+            ck_b += ck_a;
         }
+        rate_msg[12] = ck_a;
+        rate_msg[13] = ck_b;
+
+        i2c_write_dt(i2c, rate_msg, 14);
     }
     k_sleep(K_MSEC(50));
 
-    /* Enable UBX-NAV-PVT on I2C (DDC) - CFG-MSGOUT key */
-    ret = m10_send_cfg_valset(i2c, 0x20910007, 1);
+    /* Enable UBX-NAV-PVT on I2C using CFG-MSG (class=NAV, id=PVT, rate=1) */
+    ret = m10_send_cfg_msg(i2c, 0x01, 0x07, 1);
     if (ret < 0) {
         LOG_WRN("Failed to enable NAV-PVT: %d", ret);
     }
     k_sleep(K_MSEC(50));
 
-    /* Enable UBX protocol on I2C */
-    ret = m10_send_cfg_valset(i2c, 0x10720001, 1);
+    /* Disable NMEA GGA on I2C (class=0xF0, id=0x00) */
+    ret = m10_send_cfg_msg(i2c, 0xF0, 0x00, 0);
     if (ret < 0) {
-        LOG_WRN("Failed to enable UBX output: %d", ret);
+        LOG_WRN("Failed to disable NMEA GGA: %d", ret);
     }
     k_sleep(K_MSEC(50));
 
-    /* Disable NMEA protocol on I2C */
-    ret = m10_send_cfg_valset(i2c, 0x10720002, 0);
-    if (ret < 0) {
-        LOG_WRN("Failed to disable NMEA: %d", ret);
-    }
+    /* Disable NMEA GLL on I2C (class=0xF0, id=0x01) */
+    ret = m10_send_cfg_msg(i2c, 0xF0, 0x01, 0);
+    k_sleep(K_MSEC(50));
+
+    /* Disable NMEA GSA on I2C (class=0xF0, id=0x02) */
+    ret = m10_send_cfg_msg(i2c, 0xF0, 0x02, 0);
+    k_sleep(K_MSEC(50));
+
+    /* Disable NMEA RMC on I2C (class=0xF0, id=0x04) */
+    ret = m10_send_cfg_msg(i2c, 0xF0, 0x04, 0);
+    k_sleep(K_MSEC(50));
     k_sleep(K_MSEC(50));
 
     k_sleep(K_MSEC(10));
