@@ -323,7 +323,9 @@
 
     //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
     ina219_mcu: ina219@41 {
-        compatible = "ti,ina219";
+        status = "okay";
+
+        compatible = "ti,ina219-rtio";
         reg = <0x41>;
 
         //required
@@ -339,7 +341,7 @@
     };
 
     ina219_rf: ina219@42 {
-        compatible = "ti,ina219";
+        compatible = "ti,ina219-rtio";
         reg = <0x42>;
 
         //required
@@ -479,6 +481,9 @@
                 <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
                 <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
                 <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+
+    dmas = <&dmamux1 3 40 STM32_DMA_PERIPH_TX>,
+           <&dmamux1 4 39 STM32_DMA_PERIPH_RX>;
 
     ms5611_A: ms5611@0 {
         status = "okay";
