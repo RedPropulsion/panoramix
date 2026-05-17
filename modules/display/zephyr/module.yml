@@ -1,0 +1,4 @@
+name: display
+build:
+  cmake: .
+  kconfig: Kconfig

@@ -1,0 +1,5 @@
+config LIB_DISPLAY
+    bool "Display module"
+    default n
+    help
+        Enable display module for SSD1309 OLED display

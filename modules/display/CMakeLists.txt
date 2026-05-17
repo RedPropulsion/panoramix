@@ -1,0 +1,5 @@
+if(CONFIG_LIB_DISPLAY)
+  zephyr_library()
+  zephyr_library_sources(src/display.c)
+  zephyr_include_directories(include)
+endif()

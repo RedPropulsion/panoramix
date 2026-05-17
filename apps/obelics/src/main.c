@@ -14,6 +14,7 @@
 #include "sound.h"
 #include "udp_client.h"
 #include "gnss_u_blox_m10.h"
+#include "display.h"
 #include <cfb_font_templeos.h>
 #include <zephyr/drivers/i2c.h>
 
@@ -147,17 +148,12 @@ static const struct gpio_dt_spec user_btn =
     GPIO_DT_SPEC_GET(DT_NODELABEL(user_button), gpios);
 
 static struct gpio_callback btn_cb_data;
+static volatile uint8_t sound_requested = 0;
 
 void button_handler(const struct device *dev, struct gpio_callback *cb,
                     uint32_t pins)
 {
-    static uint8_t demo = 0;
-    switch (demo++ % 4) {
-    case 0: play_sound(success_sound, success_sound_len, NULL); break;
-    case 1: play_sound(alert_sound, alert_sound_len, NULL); break;
-    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, NULL); break;
-    case 3: play_sound(error_sound, error_sound_len, NULL); break;
-    }
+    sound_requested = 1;
 }
 
 /* ------------------------------------------------------------------ *
@@ -194,35 +190,15 @@ static const struct gpio_dt_spec enc_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_
 static struct gpio_callback enc_a_cb_data;
 static struct gpio_callback enc_sw_cb_data;
 
-void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    static uint32_t last_time = 0;
-    uint32_t now = k_uptime_get_32();
-    if (now - last_time < 50) return;
-    last_time = now;
-    selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
-    LOG_DBG("Selected LED %d <---", selected_led);
-}
+static volatile uint8_t encoder_event = 0;
+static volatile uint8_t encoder_sw_event = 0;
 
 void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    int phase_sw = gpio_pin_get_dt(&enc_sw);
-    int step = 10;
-    if (!phase_sw) {
-        static uint32_t last_time = 0;
-        uint32_t now = k_uptime_get_32();
-        if (now - last_time < 5) return;
-        last_time = now;
-        int phase_b = gpio_pin_get_dt(&enc_b);
-        if (phase_b) {
-            intervals[selected_led] += step;
-        } else {
-            if (intervals[selected_led] > step)
-                intervals[selected_led] -= step;
-        }
-        LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
-               selected_led, intervals[0], intervals[1], intervals[2]);
-    } else {
-        enc_sw_handler(dev, cb, pins);
-    }
+    encoder_event = 1;
+}
+
+void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
+    encoder_sw_event = 1;
 }
 
 /* ------------------------------------------------------------------ *
@@ -230,8 +206,6 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
  * ------------------------------------------------------------------ */
 // #define DISP_NODE DT_NODELABEL(ssd1309);
 // const struct device *disp = DEVICE_DT_GET(DISP_NODE);
-
-static const struct device *disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
 
 /*
 char buf[64];
@@ -279,87 +253,6 @@ const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c2));
 //     }
 // }
 
-char display_buff[64] = {0}; // 128x64/8= 16x8 chars max with 8x8 font, so 64 is a safe buffer size for formatted strings
-
-void display_string(const char *fmt, ...)
-{
-    char buf[64];
-    int ret;
-    
-    va_list args;
-    va_start(args, fmt);
-    ret = vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-
-    // LOG_INF("Formatted string length: %d", ret);
-    // LOG_INF("Formatted string: %s", buf);
-    
-    cfb_framebuffer_clear(disp, false);  // clear buffer only
-    ret = cfb_print(disp, buf, 0, 0);          // print at (0,0)
-    if (ret < 0) {
-        LOG_ERR("Failed to print string: %d", ret);
-        return;
-    } else {
-        // LOG_DBG("String printed to framebuffer with return code: %d", ret);
-    }
-    cfb_framebuffer_finalize(disp);       // WRITE to display
-}
-
-void update_row(uint8_t row, const char *fmt, ...)
-{
-    if (row >= 8) {
-        LOG_ERR("Row %d out of bounds", row);
-        return;
-    }
-
-    char buf[16]; // 16 chars max for one row with 8x8 font on 128x64 display
-    int ret;
-    
-
-    va_list args;
-    va_start(args, fmt);
-    ret = vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-
-    // LOG_INF("Formatted string length: %d", ret);
-    // LOG_INF("Formatted string: %s", buf);
-
-    if (ret >= 16) {
-        LOG_WRN("Formatted string truncated to fit row: %s", buf);
-    }
-
-    // LOG_DBG("Updating row %d: %s", row, buf);
-
-    memcpy((void *)(display_buff + row * 16), buf, sizeof(buf)); // Copy formatted string into the correct row of display_buff
-    // LOG_WRN("DISPLAY_BUFF: %s", display_buff);
-
-    // LOG_INF("Updated display_buff:");
-    // for (int i = 0; i < 8; i++) {
-    //     LOG_INF(" %d: %s", i, display_buff + i * 16);
-    // }
-    // OR
-    //cfb_print(disp,buf,0,row); // print at (0,row) but we don't save previous screen if we use display_string()
-    // idk if we actually need to maintain our own display_buff or if we can just call cfb_print()
-    
-    // cfb_framebuffer_clear(disp, false);  // clear buffer only
-    ret = cfb_print(disp, buf, 0, row*8);          // print at (0,0)
-    if (ret < 0) {
-        LOG_ERR("Failed to print string: %d", ret);
-        return;
-    } else {
-        // LOG_DBG("String printed to framebuffer with return code: %d", ret);
-    }
-    cfb_framebuffer_finalize(disp);       // WRITE to display
-}
-
-void clear_text()
-{
-    cfb_framebuffer_clear(disp, true);  // clear buffer and display
-    memset((void *)display_buff, 0, sizeof(display_buff));
-    cfb_framebuffer_finalize(disp);       // WRITE to display
-    return;
-}
-
 /* ------------------------------------------------------------------ *
  * GPS
  * ------------------------------------------------------------------ */
@@ -385,44 +278,12 @@ int main(void)
 
 
 /* Oled Display */
-    if (!device_is_ready(disp)) {
-        LOG_ERR("Display not ready");
-        return 0;
-    }
-
-    if (display_set_pixel_format(disp, PIXEL_FORMAT_MONO10) != 0) {
-       if (display_set_pixel_format(disp, PIXEL_FORMAT_MONO01) != 0) {
-           LOG_ERR("Failed to set Display Format");
-           return 0;
-       }else{
-        LOG_DBG("Set Display format to 01");
-       }
-   }else{
-    LOG_DBG("Set Display format to 10");
-   }
-
-    struct display_capabilities caps;
-    display_get_capabilities(disp, &caps);
-    LOG_DBG("Display caps: %dx%d, format=%d", 
-    caps.x_resolution, caps.y_resolution, caps.current_pixel_format);
-
-    ret = cfb_framebuffer_init(disp);
+    ret = display_init();
     if (ret < 0) {
-        LOG_ERR("Failed to initialize framebuffer: %d", ret);
-        return 0;
-    }
-    ret = cfb_framebuffer_clear(disp, true);
-    if (ret < 0) {
-        LOG_ERR("Failed to clear framebuffer: %d", ret);
-        return 0;
-    }
-    ret = display_blanking_off(disp);
-    if (ret < 0) {
-        LOG_ERR("Failed to turn off display blanking: %d", ret);
-        return 0;
+        LOG_ERR("Display init failed: %d", ret);
     }
     display_string("test");
-    update_row(0, "Starting");
+    display_update_row(0, "Starting");
 
     // cfb_framebuffer_finalize(disp);
 
@@ -466,7 +327,7 @@ int main(void)
     int16_t RSSI;
     int8_t SNR;
 
-    update_row(1,"LoRa ok");
+    display_update_row(1,"LoRa ok");
 
     /* Mount SD card */
     
@@ -505,7 +366,7 @@ int main(void)
         k_timer_start(&leds[i].timer, K_MSEC(intervals[i]), K_NO_WAIT);
     }
 
-    update_row(2, "LED,Sound OK");
+    display_update_row(2, "LED,Sound OK");
 
     /* Encoder */
     if (!gpio_is_ready_dt(&enc_a) || !gpio_is_ready_dt(&enc_b) ||
@@ -539,19 +400,19 @@ int main(void)
     gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
     ret = gpio_add_callback(user_btn.port, &btn_cb_data);
 
-    update_row(3, "Buttons OK");
+    display_update_row(3, "Buttons OK");
 
-    update_row(4, "UDP init");
+    display_update_row(4, "UDP init");
     udp_client_init();
-    update_row(5, "UDP Ok");
+    display_update_row(5, "UDP Ok");
 
 
     struct gps_position pos;
     if (gps_get_latest(&pos) == 0) {
         LOG_INF("GPS: %s data \n\t\t %d sats\n\t\t %d fix type  ",pos.valid ? "Valid" : "Invalid", pos.satellites, pos.fix_type);
-        update_row(6, "GPS: %d sats", pos.satellites);
+        display_update_row(6, "GPS: %d sats", pos.satellites);
     } else {
-        update_row(6, "GPS: No fix");
+        display_update_row(6, "GPS: No fix");
     }
 
 
@@ -562,13 +423,57 @@ int main(void)
 
     LOG_INF("Starting main loop...");
     // display_string("Main loop");
-    update_row(5, "Init complete");
+    display_update_row(5, "Init complete");
     k_sleep(K_MSEC(1000));
 
-    clear_text();
+    display_clear_text();
     int lora_counter = 0;
     int row=0;
+    static uint8_t demo = 0;
     while (1) {
+
+        if (sound_requested) {
+            sound_requested = 0;
+            switch (demo++ % 4) {
+            case 0: play_sound(success_sound, success_sound_len, NULL); break;
+            case 1: play_sound(alert_sound, alert_sound_len, NULL); break;
+            case 2: play_sound(acknowledge_sound, acknowledge_sound_len, NULL); break;
+            case 3: play_sound(error_sound, error_sound_len, NULL); break;
+            }
+        }
+
+        if (encoder_sw_event) {
+            encoder_sw_event = 0;
+            static uint32_t last_time = 0;
+            uint32_t now = k_uptime_get_32();
+            if (now - last_time >= 50) {
+                last_time = now;
+                selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
+                LOG_DBG("Selected LED %d <---", selected_led);
+            }
+        }
+
+        if (encoder_event) {
+            encoder_event = 0;
+            int phase_sw = gpio_pin_get_dt(&enc_sw);
+            int step = 10;
+            if (!phase_sw) {
+                static uint32_t last_time = 0;
+                uint32_t now = k_uptime_get_32();
+                if (now - last_time >= 5) {
+                    last_time = now;
+                    int phase_b = gpio_pin_get_dt(&enc_b);
+                    if (phase_b) {
+                        intervals[selected_led] += step;
+                    } else {
+                        if (intervals[selected_led] > step)
+                            intervals[selected_led] -= step;
+                    }
+                    LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
+                           selected_led, intervals[0], intervals[1], intervals[2]);
+                }
+            }
+        }
 
         // display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
@@ -592,6 +497,8 @@ int main(void)
         }
         toggle = !toggle;
 
+        // sound_process();
+
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
 
         
@@ -599,14 +506,14 @@ int main(void)
         int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
         if (err == -EAGAIN) {
             LOG_DBG("No LoRa RX data yet");
-            update_row(7, "No LoRa RX data");
+            display_update_row(7, "No LoRa RX data");
         } else if (err < 0) {
             LOG_ERR("LoRa RX failed: %d", err);
-            update_row(7, "LoRa RX failed: %d", err);
+            display_update_row(7, "LoRa RX failed: %d", err);
         } else {
             LOG_INF("LoRa RX: %d bytes: %s", err, buf);
             LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
-            update_row(7, "RSSI: %d, SNR: %d", RSSI, SNR);
+            display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
         }
         row = (row + 1) % 8; // cycle through display rows for updates
 
@@ -625,15 +532,16 @@ int main(void)
 
         ret = gps_get_latest(&pos);
         if (ret == 0 && pos.valid) {
-            update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
-            update_row(1, "lat%d", pos.latitude);
-            update_row(2,"lon%d", pos.longitude);
-            update_row(3,"alt%d m", (int)(pos.altitude_mm/1000));
-            update_row(4, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
+            display_update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
+            display_update_row(1, "lat%d", pos.latitude);
+            display_update_row(2,"lon%d", pos.longitude);
+            display_update_row(3,"alt%d", (int)(pos.altitude_mm));
+            display_update_row(4,"h:%d v:%d", (int)(pos.horiz_acc_mm), (int)(pos.vert_acc_mm));   
+            display_update_row(5, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
         } else {
-            update_row(0, "GPS: No fix");
+            display_update_row(0, "GPS: No fix");
         }
-        k_sleep(K_SECONDS(3));
+        // k_sleep(K_SECONDS(1));
     }
     return 0;
 }
