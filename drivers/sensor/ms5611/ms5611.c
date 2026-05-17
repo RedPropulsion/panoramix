@@ -223,10 +223,10 @@ static int ms5611_decoder_decode(const uint8_t *buffer,
     if (!edata->flags.has_press) {
       return -ENODATA;
     }
-    // press is in mBar (hPa).
-    // sensor_q31 expects kPa, so divide by 10 after q31 encoding
+    // press is in Pa.
+    // sensor_q31 expects kPa, so divide by 1000 after q31 encoding
     out->readings[0].value =
-        ((int64_t)press * (INT64_C(1) << (31 - out->shift))) / 10;
+        ((int64_t)press * (INT64_C(1) << (31 - out->shift)) / 1000);
     break;
   default:
     return -EINVAL;

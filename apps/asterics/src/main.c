@@ -54,7 +54,7 @@ static void on_sensor_data(int ret, uint8_t *buf, uint32_t buf_len,
   fit = 0;
 
   while (decoder->decode(buf, temp_ch, &fit, 1, &sensor_data) > 0) {
-    LOG_INF("press=%" PRIsensor_q31_data "\n",
+    LOG_INF("temp=%" PRIsensor_q31_data "\n",
             PRIsensor_q31_data_arg(sensor_data, 0));
   }
 }
@@ -85,7 +85,6 @@ int main(void) {
     k_sleep(K_MSEC(10000));
   }
   while (1) {
-    LOG_INF("HEY");
     int ret = sensor_read_async_mempool(&mcu_ms5611_iodev, &sensor_ctx,
                                         &mcu_ms5611_iodev);
     if (ret < 0) {
