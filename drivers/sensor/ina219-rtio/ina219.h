@@ -66,6 +66,24 @@ struct ina219_data {
   uint32_t msr_delay;
 };
 
+// Defines the RTIO buffer format
+struct ina219_encoded_data {
+  struct {
+    uint64_t timestamp; // in nanoseconds
+  } header;
+  struct {
+    uint8_t has_voltage : 1;
+    uint8_t has_current : 1;
+    uint8_t has_power : 1;
+  } flags;
+  union {
+    uint8_t rx_buf_voltage[2];
+    uint8_t rx_buf[2];
+  };
+  uint8_t rx_buf_current[2];
+  uint8_t rx_buf_power[2];
+} __attribute__((__packed__));
+
 static inline int ina219_conv_delay(uint8_t delay_idx) {
   switch (delay_idx) {
   case 0:
