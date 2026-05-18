@@ -123,9 +123,15 @@
     pinctrl-names = "default";
     current-speed = <1000000>;
 
-    st3215: servo {
+    yaw_servo: yaw_servo {
         status = "okay";
         compatible = "waveshare,st3215";
         servo-id = <1>;
+    };
+
+    pitch_servo: pitch_servo {
+        status = "okay";
+        compatible = "waveshare,st3215";
+        servo-id = <2>;
     };
 };

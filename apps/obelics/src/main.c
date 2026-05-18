@@ -17,7 +17,9 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 #include <zephyr/drivers/uart.h>
 
-const struct device *servo = DEVICE_DT_GET(DT_NODELABEL(st3215));
+const struct device *yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
+const struct device *pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
+
 
 #define ST3215_HEADER 0xFF
 #define ST3215_ID_DEFAULT 0x01
@@ -353,31 +355,22 @@ int main(void) {
   //   }
 
   int32_t angle_mdeg;
-//   ret = servo_get_position(servo, &angle_mdeg);
-//     if (ret < 0) {
-//         LOG_ERR("Failed to get servo position: %s (%d)", strerror(-ret), ret);
-//     } else {
-//         LOG_INF("Initial servo position: %d us", angle_mdeg);
-//     }
-//   servo_set_position(servo, 0 * 1000);
-//   LOG_INF("Servo set to 0");
-// //   k_msleep(4000);
-// //   servo_set_position(servo, 90 * 1000);
-// //   LOG_INF("Servo set to 180000");
-//   k_msleep(4000);
-//   servo_set_position(servo, 180 * 1000);
-//   LOG_INF("Servo set to 180");
-//   k_msleep(4000);
-//   servo_set_position(servo, 90 * 1000);
-//   LOG_INF("Servo set to 90");
-//   servo_get_position(servo, &angle_mdeg);
 //   
 
   LOG_INF("Rotating servo to 90 degrees...");
-  servo_set_position(servo, 90 * 1000);
+  servo_set_position(yaw_servo, 90 * 1000);
+  servo_get_position(yaw_servo, &angle_mdeg);
+  LOG_INF("Servo position after move: %d us", angle_mdeg);
 
-  servo_ping(servo);
-  
+  servo_ping(yaw_servo);
+
+
+  servo_set_position(pitch_servo, 45 * 1000);
+  servo_get_position(pitch_servo, &angle_mdeg);
+  LOG_INF("Servo position after move: %d us", angle_mdeg);
+
+  servo_ping(pitch_servo);
+
 
 //   k_msleep(500);
 //   servo_get_position(servo, &angle_mdeg);
