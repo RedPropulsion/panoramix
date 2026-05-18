@@ -1,5 +1,5 @@
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(encoder_input, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(encoder_input, CONFIG_ENCODER_INPUT_LOG_LEVEL);
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>

@@ -26,4 +26,11 @@ config LIB_MENU_MIN_REDRAW_MS
     help
         Minimum time between data-triggered redraws to prevent flicker
 
+config LIB_MENU_INPUT_LOG_LEVEL
+    int "Menu lib log level"
+    default 2
+    help
+        Log level for the lib_menu module.
+        0=OFF, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG
+
 endif # LIB_MENU
