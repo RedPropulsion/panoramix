@@ -1,2 +1,5 @@
 zephyr_library()
-zephyr_library_sources(ms5611.c)
+zephyr_library_sources(
+    ms5611.c
+    ms5611_bus.c
+)
