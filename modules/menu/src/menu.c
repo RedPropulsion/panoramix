@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
 
@@ -31,9 +32,6 @@ static void menu_handle_event(enum encoder_event evt);
 static void update_scroll(void);
 
 static struct menu main_menu;
-static struct menu comms_menu;
-static struct menu gps_menu;
-static struct menu status_menu;
 static struct menu commands_menu;
 
 static void draw_row(uint8_t row, const char *str, bool invert)
@@ -92,7 +90,7 @@ static void draw_confirmation_screen(void)
 
 static void draw_menu_screen(void)
 {
-    clear_display();
+    // clear_display();
 
     if (state.current->title) {
         draw_row(0, state.current->title, false);
@@ -107,16 +105,11 @@ static void draw_menu_screen(void)
     for (size_t i = start; i < end; i++) {
         size_t row = i - start + 1;
         bool is_selected = (i == state.selected);
-        bool is_cursor_row = (row == MENU_CURSOR_ROW);
 
         char buf[17] = {0};
         struct menu_item *item = &state.current->items[i];
 
-        if (is_cursor_row) {
-            snprintf(buf, sizeof(buf), ">%s", item->label);
-        } else {
-            snprintf(buf, sizeof(buf), " %s", item->label);
-        }
+        snprintf(buf, sizeof(buf), " %s", item->label);
 
         draw_row(row, buf, is_selected);
     }
@@ -128,6 +121,8 @@ static void menu_redraw(void)
 {
     if (state.showing_confirmation) {
         draw_confirmation_screen();
+    } else if (state.active_draw_fn) {
+        state.active_draw_fn();
     } else {
         draw_menu_screen();
     }
@@ -170,7 +165,11 @@ static void menu_handle_event(enum encoder_event evt)
         break;
     case ENCODER_DOUBLE_PRESS: {
         struct menu_item *item = &state.current->items[state.selected];
-        if (item->submenu) {
+        if (item->draw_fn) {
+            state.active_draw_fn = item->draw_fn;
+            state.active_title = item->label;
+            clear_display();
+        } else if (item->submenu) {
             state.current = item->submenu;
             state.selected = 0;
             state.scroll_offset = 0;
@@ -189,15 +188,24 @@ static void menu_handle_event(enum encoder_event evt)
             break;
         }
         struct menu_item *item = &state.current->items[state.selected];
-        if (item->submenu) {
+        if (item->draw_fn) {
+            state.active_draw_fn = item->draw_fn;
+            state.active_title = item->label;
+            clear_display();
+        } else if (item->submenu) {
             state.current = item->submenu;
             state.selected = 0;
             state.scroll_offset = 0;
+            clear_display();
         }
         break;
     }
     case ENCODER_PRESS_ROTATE_CCW:
-        if (state.current->parent) {
+        if (state.active_draw_fn) {
+            state.active_draw_fn = NULL;
+            state.active_title = NULL;
+            clear_display();
+        } else if (state.current->parent) {
             state.current = state.current->parent;
             state.selected = 0;
             state.scroll_offset = 0;
@@ -214,7 +222,7 @@ void menu_thread(void *p1, void *p2, void *p3)
                       K_POLL_MODE_NOTIFY_ONLY, &menu_data_sem);
 
 while (1) {
-        int rc = k_poll(events, 2, K_FOREVER);
+        k_poll(events, 2, K_FOREVER);
 
         bool user_input = false;
         bool data_changed = false;
@@ -299,18 +307,18 @@ static void draw_comms_screen(void)
 
     char buf[17];
     snprintf(buf, sizeof(buf), "LoRa TX:%u RX:%u",
-             atomic_get(&menu_data.lora.tx_count),
-             atomic_get(&menu_data.lora.rx_count));
+             (int32_t)atomic_get(&menu_data.lora.tx_count),
+             (int32_t)atomic_get(&menu_data.lora.rx_count));
     draw_row(2, buf, false);
 
     snprintf(buf, sizeof(buf), "RSSI:%d SNR:%d",
-             atomic_get(&menu_data.lora.last_rssi),
-             atomic_get(&menu_data.lora.last_snr));
+             (int32_t)atomic_get(&menu_data.lora.last_rssi),
+             (int32_t)atomic_get(&menu_data.lora.last_snr));
     draw_row(3, buf, false);
 
     snprintf(buf, sizeof(buf), "UDP TX:%u RX:%u",
-             atomic_get(&menu_data.udp.tx_count),
-             atomic_get(&menu_data.udp.rx_count));
+             (int32_t)atomic_get(&menu_data.udp.tx_count),
+             (int32_t)atomic_get(&menu_data.udp.rx_count));
     draw_row(4, buf, false);
 
     cfb_framebuffer_finalize(disp);
@@ -394,10 +402,10 @@ static struct menu_item commands_items[] = {
 };
 
 static struct menu_item main_items[] = {
-    {"COMMS", draw_comms_screen, NULL, &comms_menu, false},
-    {"GPS", draw_gps_screen, NULL, &gps_menu, false},
-    {"Status", draw_status_screen, NULL, &status_menu, false},
-    {"Commands", NULL, NULL, &commands_menu, false},
+    {"COMMS",    draw_comms_screen,  NULL, NULL, false},
+    {"GPS",      draw_gps_screen,    NULL, NULL, false},
+    {"Status",   draw_status_screen, NULL, NULL, false},
+    {"Commands", NULL,               NULL, &commands_menu, false},
 };
 
 static struct menu main_menu = {
@@ -405,27 +413,6 @@ static struct menu main_menu = {
     .items = main_items,
     .item_count = ARRAY_SIZE(main_items),
     .parent = NULL,
-};
-
-static struct menu comms_menu = {
-    .title = "COMMS",
-    .items = NULL,
-    .item_count = 0,
-    .parent = &main_menu,
-};
-
-static struct menu gps_menu = {
-    .title = "GPS",
-    .items = NULL,
-    .item_count = 0,
-    .parent = &main_menu,
-};
-
-static struct menu status_menu = {
-    .title = "Status",
-    .items = NULL,
-    .item_count = 0,
-    .parent = &main_menu,
 };
 
 static struct menu commands_menu = {
@@ -465,6 +452,8 @@ int menu_init(void)
     state.scroll_offset = 0;
     state.showing_confirmation = false;
     state.confirming_item = NULL;
+    state.active_draw_fn = NULL;
+    state.active_title = NULL;
 
     menu_update_asterics("STANDBY", 12400, false, 0);
     menu_update_gps(false, 0, 0, 0, 0, 0);

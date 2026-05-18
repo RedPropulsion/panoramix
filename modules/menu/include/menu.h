@@ -35,6 +35,8 @@ struct menu_state {
     size_t scroll_offset;
     bool showing_confirmation;
     struct menu_item *confirming_item;
+    menu_draw_fn active_draw_fn;
+    const char *active_title;
 };
 
 struct menu_display_data {

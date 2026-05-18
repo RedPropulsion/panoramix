@@ -409,9 +409,11 @@ int main(void)
             LOG_DBG("No LoRa RX data yet");
             // display_update_row(7, "No LoRa RX data");
         } else if (err < 0) {
+          menu_update_lora_stats(lora_counter, err, 0, 0);
             LOG_ERR("LoRa RX failed: %d", err);
             // display_update_row(7, "LoRa RX failed: %d", err);
         } else {
+          menu_update_lora_stats(lora_counter, err, (int16_t)RSSI, (int8_t)SNR);
             LOG_INF("LoRa RX: %d bytes: %s", err, buf);
             LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
             // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
@@ -433,6 +435,7 @@ int main(void)
 
         ret = gps_get_latest(&pos);
         if (ret == 0 && pos.valid) {
+          menu_update_gps(true, pos.satellites, pos.fix_type, pos.latitude, pos.longitude, pos.altitude_mm);
             // display_update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
             // display_update_row(1, "lat%d", pos.latitude);
             // display_update_row(2,"lon%d", pos.longitude);
