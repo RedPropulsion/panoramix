@@ -21,106 +21,6 @@ const struct device *yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
 const struct device *pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
 
 
-#define ST3215_HEADER 0xFF
-#define ST3215_ID_DEFAULT 0x01
-
-static uint8_t st3215_calc_checksum(uint8_t *packet, uint8_t len) {
-    uint32_t sum = 0;
-    for (int i = 2; i < len - 1; i++) {
-        sum += packet[i];
-    }
-    return (uint8_t)(~sum);
-}
-
-int st3215_write_register(uint8_t reg_addr, uint8_t value) {
-    const struct device *uart_dev = device_get_binding("serial@40004400");
-    if (!uart_dev) {
-        LOG_ERR("UART not found");
-        return -ENODEV;
-    }
-    // Flush RX
-    uint8_t temp;
-    while (uart_poll_in(uart_dev, &temp) == 0) { }
-    // WRITE DATA packet: FF FF ID LEN INST ADDR DATA CHECKSUM
-    // Length = 5 (Instruction + Address + Data Length + Data + Checksum)
-    uint8_t write_cmd[8];
-    write_cmd[0] = ST3215_HEADER;
-    write_cmd[1] = ST3215_HEADER;
-    write_cmd[2] = ST3215_ID_DEFAULT;
-    write_cmd[3] = 0x05;  // Length = 5
-    write_cmd[4] = 0x03;  // WRITE DATA instruction
-    write_cmd[5] = reg_addr;  // Register address (0x08 for Status Return Level)
-    write_cmd[6] = value;      // Value to write
-    write_cmd[7] = st3215_calc_checksum(write_cmd, 8);
-    LOG_INF("Writing reg 0x%02X = 0x%02X", reg_addr, value);
-    for (int i = 0; i < 8; i++) {
-        uart_poll_out(uart_dev, write_cmd[i]);
-    }
-    // No response expected for WRITE commands (only response is status byte)
-    k_usleep(100);
-    return 0;
-}
-
-
-int st3215_ping(void) {
-    const struct device *uart_dev = device_get_binding("serial@40004400");
-    if (!uart_dev) {
-        LOG_ERR("UART not found");
-        return -ENODEV;
-    }
-    // Flush RX buffer
-    uint8_t temp;
-    while (uart_poll_in(uart_dev, &temp) == 0) { }
-    // PING packet: FF FF ID 01 01 checksum
-    uint8_t ping_cmd[6];
-    ping_cmd[0] = ST3215_HEADER;
-    ping_cmd[1] = ST3215_HEADER;
-    ping_cmd[2] = ST3215_ID_DEFAULT;
-    ping_cmd[3] = 0x01;  // Length
-    ping_cmd[4] = 0x01;  // PING
-    ping_cmd[5] = st3215_calc_checksum(ping_cmd, 6);
-    LOG_INF("Sending PING: %02X %02X %02X %02X %02X %02X",
-            ping_cmd[0], ping_cmd[1], ping_cmd[2], ping_cmd[3], ping_cmd[4], ping_cmd[5]);
-    for (int i = 0; i < 6; i++) {
-        uart_poll_out(uart_dev, ping_cmd[i]);
-    }
-    // Wait before reading
-    k_usleep(1000);
-    // Read with timeout - wait up to ~500ms for full response
-    uint8_t response[6];
-    int bytes_received = 0;
-    int attempts = 0;
-    const int MAX_ATTEMPTS = 50000;  // ~500ms total timeout
-    while (bytes_received < 6 && attempts < MAX_ATTEMPTS) {
-        uint8_t c;
-        if (uart_poll_in(uart_dev, &c) == 0) {
-            response[bytes_received++] = c;
-            LOG_INF("Received byte %d: 0x%02X", bytes_received, c);
-        } else {
-            attempts++;
-            k_usleep(10);
-        }
-    }
-    if (bytes_received < 6) {
-        LOG_ERR("PING timeout: only got %d bytes", bytes_received);
-        return -ETIMEDOUT;
-    }
-    // Verify headers
-    if (response[0] != 0xFF || response[1] != 0xFF) {
-        LOG_ERR("Invalid headers: 0x%02X 0x%02X", response[0], response[1]);
-        return -EIO;
-    }
-    // Verify checksum
-    uint8_t calc_cs = st3215_calc_checksum(response, 6);
-    if (calc_cs != response[5]) {
-        LOG_ERR("Checksum mismatch: calc=0x%02X, recv=0x%02X", calc_cs, response[5]);
-        return -EBADMSG;
-    }
-    LOG_INF("PING OK! Servo ID: %d, Status: 0x%02X", response[2], response[4]);
-    return 0;
-}
-
-
 /* ------------------------------------------------------------------ *
  * SD Card / FATFS
  * ------------------------------------------------------------------ */
@@ -338,43 +238,45 @@ int main(void) {
   LOG_INF("Starting main()");
   int ret;
 
-
-//   LOG_INF("Setting Status Return Level to 1...");
-//   ret = st3215_write_register(0x08, 0x01);
-//   if (ret < 0) {
-//       LOG_ERR("Failed to set Status Return Level: %s (%d)", strerror(-ret), ret);
-//   } else {
-//       LOG_INF("Status Return Level set successfully");
-//   }
-
-  // ret = st3215_ping();
-  //   if (ret < 0) {
-  //       LOG_ERR("PING failed: %s (%d)", strerror(-ret), ret);
-  //   } else {
-  //       LOG_INF("PING OK!");
-  //   }
-
   int32_t angle_mdeg;
-//   
+  void *response_data = &angle_mdeg;
+  LOG_INF("%p", response_data);
+
+  k_sleep(K_MSEC(500));
+
+  servo_set_position(yaw_servo, 0);
+  servo_get_position(yaw_servo, &angle_mdeg);
+  LOG_INF("Initial servo position: %d us", angle_mdeg);
+
+  k_sleep(K_MSEC(500));
+
+  servo_set_position(pitch_servo,210 * 1000);
+  servo_get_position(pitch_servo, &angle_mdeg);
+  LOG_INF("Initial servo position: %d us", angle_mdeg);
+
+  k_sleep(K_MSEC(500));
 
   LOG_INF("Rotating servo to 90 degrees...");
   servo_set_position(yaw_servo, 90 * 1000);
   servo_get_position(yaw_servo, &angle_mdeg);
   LOG_INF("Servo position after move: %d us", angle_mdeg);
 
-  servo_ping(yaw_servo);
+  // servo_ping(yaw_servo);
+  // k_sleep(K_MSEC(500));
+
+  uint8_t pitch_status;
+  servo_get_status(pitch_servo, &pitch_status);
+  LOG_INF("Pitch servo status: 0x%02X", pitch_status);
+
+  // k_sleep(K_MSEC(500));
+
+  // servo_ping(pitch_servo);
 
 
-  servo_set_position(pitch_servo, 45 * 1000);
+  k_msleep(500);
+  servo_set_position(pitch_servo, 260 * 1000);
   servo_get_position(pitch_servo, &angle_mdeg);
   LOG_INF("Servo position after move: %d us", angle_mdeg);
-
-  servo_ping(pitch_servo);
-
-
-//   k_msleep(500);
-//   servo_get_position(servo, &angle_mdeg);
-//   LOG_INF("Servo position after move: %d us", angle_mdeg);
 
   udp_client_init();
 

@@ -11,6 +11,7 @@ typedef int (*servo_set_time_t)(const struct device *dev,
 typedef int (*servo_ping_t)(const struct device *dev);
 typedef int (*servo_enable_torque_t)(const struct device *dev);
 typedef int (*servo_disable_torque_t)(const struct device *dev);
+typedef int (*servo_get_status_t)(const struct device *dev, uint8_t *status);
 
 __subsystem struct servo_driver_api {
   servo_set_position_t set_position;
@@ -20,6 +21,7 @@ __subsystem struct servo_driver_api {
   servo_ping_t ping;
   servo_enable_torque_t enable_torque;
   servo_disable_torque_t disable_torque;
+  servo_get_status_t get_status;
 };
 
 static inline int servo_set_position(const struct device *dev,
@@ -74,4 +76,12 @@ static inline int servo_disable_torque(const struct device *dev) {
     return -ENOSYS;
   }
   return api->disable_torque(dev);
+}
+
+static inline int servo_get_status(const struct device *dev, uint8_t *status) {
+  const struct servo_driver_api *api = dev->api;
+  if (api->get_status == NULL) {
+    return -ENOSYS;
+  }
+  return api->get_status(dev, status);
 }

@@ -18,8 +18,8 @@ properties:
   time-ms:
     type: int
     required: false
-    default: 500
-    description: Goal time in milliseconds
+    default: 0
+    description: Goal time in milliseconds (0=use speed register)
   dir-gpios:
     type: phandle-array
     required: false
