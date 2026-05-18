@@ -1,0 +1,5 @@
+config ENCODER_INPUT
+    bool "Encoder input driver"
+    default n
+    help
+        Rotary encoder input driver for menu navigation

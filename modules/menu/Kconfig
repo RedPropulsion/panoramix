@@ -1,0 +1,29 @@
+config LIB_MENU
+    bool "Menu system for display"
+    default n
+    depends on LIB_DISPLAY
+    depends on ENCODER_INPUT
+    help
+        Menu system with encoder navigation for OLED display
+
+if LIB_MENU
+
+config LIB_MENU_STACK_SIZE
+    int "Menu thread stack size"
+    default 2048
+    help
+        Stack size for the menu thread
+
+config LIB_MENU_PRIORITY
+    int "Menu thread priority"
+    default 10
+    help
+        Priority for the menu thread (lower = higher priority, 0-64)
+
+config LIB_MENU_MIN_REDRAW_MS
+    int "Minimum redraw interval (ms)"
+    default 200
+    help
+        Minimum time between data-triggered redraws to prevent flicker
+
+endif # LIB_MENU

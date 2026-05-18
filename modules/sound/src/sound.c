@@ -33,7 +33,7 @@ static struct k_work_delayable note_work;
 
 static void note_work_handler(struct k_work *work) {
   ARG_UNUSED(work);
-  pwm_set_dt(sound_pwm, sound_pwm->period, 0);
+  pwm_set_dt(sound_pwm, 0, 0);
 
   if (sound_state.index >= sound_state.count) {
     sound_done_cb cb = sound_state.done_cb;
@@ -47,7 +47,7 @@ static void note_work_handler(struct k_work *work) {
   const Note *n = &sound_state.notes[sound_state.index++];
 
   if (n->freq_hz == NOTE_REST || n->freq_hz == 0) {
-    pwm_set_dt(sound_pwm, sound_pwm->period, 0);
+    pwm_set_dt(sound_pwm, 0, 0);
   } else {
     uint32_t period_ns = NSEC_PER_SEC / n->freq_hz;
     pwm_set_dt(sound_pwm, period_ns, period_ns / 2U);
@@ -59,7 +59,7 @@ static void note_work_handler(struct k_work *work) {
 void stop_sound(void) {
   k_work_cancel_delayable(&note_work);
   if (sound_pwm) {
-    pwm_set_dt(sound_pwm, sound_pwm->period, 0);
+    pwm_set_dt(sound_pwm, 0, 0);
   }
   memset(&sound_state, 0, sizeof(sound_state));
 }

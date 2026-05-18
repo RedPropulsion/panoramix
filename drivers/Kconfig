@@ -2,6 +2,7 @@
 menu "Drivers"
 rsource "sensor/Kconfig"
 rsource "led_strip/Kconfig"
+rsource "input/Kconfig"
 
 if GNSS
 rsource "gnss/Kconfig"

@@ -15,6 +15,7 @@
 #include "udp_client.h"
 #include "gnss_u_blox_m10.h"
 #include "display.h"
+#include "menu.h"
 #include <cfb_font_templeos.h>
 #include <zephyr/drivers/i2c.h>
 
@@ -205,97 +206,12 @@ void led_timer_handler(struct k_timer *timer_id) {
 }
 
 /* ------------------------------------------------------------------ *
- * Encoder
- * ------------------------------------------------------------------ */
-static const struct gpio_dt_spec enc_a  = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_a), gpios);
-static const struct gpio_dt_spec enc_b  = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_b), gpios);
-static const struct gpio_dt_spec enc_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_s), gpios);
-
-static struct gpio_callback enc_a_cb_data;
-static struct gpio_callback enc_sw_cb_data;
-
-void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    static uint32_t last_time = 0;
-    uint32_t now = k_uptime_get_32();
-    if (now - last_time < 50) return;
-    last_time = now;
-    selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
-    LOG_DBG("Selected LED %d <---", selected_led);
-}
-
-void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    int phase_sw = gpio_pin_get_dt(&enc_sw);
-    int step = 10;
-    if (!phase_sw) {
-        static uint32_t last_time = 0;
-        uint32_t now = k_uptime_get_32();
-        if (now - last_time < 5) return;
-        last_time = now;
-        int phase_b = gpio_pin_get_dt(&enc_b);
-        if (phase_b) {
-            intervals[selected_led] += step;
-        } else {
-            if (intervals[selected_led] > step)
-                intervals[selected_led] -= step;
-        }
-        LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
-               selected_led, intervals[0], intervals[1], intervals[2]);
-    } else {
-        enc_sw_handler(dev, cb, pins);
-    }
-}
-
-/* ------------------------------------------------------------------ *
  * Oled Display
  * ------------------------------------------------------------------ */
-// #define DISP_NODE DT_NODELABEL(ssd1309);
-// const struct device *disp = DEVICE_DT_GET(DISP_NODE);
 
-/*
-char buf[64];
-snprintf(buf, sizeof(buf), "Error: %d", err);
-
-formats printf-style into buf, then use cfb_print(disp, buf, x, y) to display on the screen.
-*/
 const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c2));
 
-// void i2c_scan_bus(const struct device *i2c_dev)
-// {
-//     uint8_t first = 0x04;
-//     uint8_t last = 0x77;
 
-//     LOG_INF("Scanning I2C bus %s...", i2c_dev->name);
-
-//     for (uint8_t addr = first; addr <= last; addr++) {
-//         struct i2c_msg msgs[1];
-//         uint8_t dummy;
-
-//         msgs[0].buf = &dummy;
-//         msgs[0].len = 0U;
-//         msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
-
-//         if (i2c_transfer(i2c_dev, &msgs[0], 1, addr) == 0) {
-//             LOG_INF("  Found device at 0x%02x", addr);
-//         }
-//     }
-
-//     LOG_INF("Scan complete");
-
-//     LOG_INF("Testing M10 at 0x21...");
-//     uint8_t reg = 0xFD;
-//     uint8_t buf[2];
-//     struct i2c_msg msgs[2] = {
-//         { .buf = &reg, .len = 1, .flags = I2C_MSG_WRITE },
-//         { .buf = buf, .len = 2, .flags = I2C_MSG_READ | I2C_MSG_STOP },
-//     };
-//     int ret = i2c_transfer(i2c_dev, msgs, 2, 0x21);
-//     if (ret == 0) {
-//         uint16_t avail = (buf[0] << 8) | buf[1];
-//         LOG_INF("M10 available bytes: %d", avail);
-//     } else {
-//         LOG_ERR("M10 I2C read failed: %d", ret);
-//     }
-// }
 
 /* ------------------------------------------------------------------ *
  * GPS
@@ -413,25 +329,6 @@ int main(void)
 
     display_update_row(2, "LED,Sound OK");
 
-    /* Encoder */
-    if (!gpio_is_ready_dt(&enc_a) || !gpio_is_ready_dt(&enc_b) ||
-        !gpio_is_ready_dt(&enc_sw)) {
-        LOG_ERR("Encoder GPIOs not ready");
-        return 0;
-    }
-    gpio_pin_configure_dt(&enc_a, GPIO_INPUT);
-    gpio_pin_configure_dt(&enc_b, GPIO_INPUT);
-    gpio_pin_configure_dt(&enc_sw, GPIO_INPUT);
-
-    gpio_pin_interrupt_configure_dt(&enc_a, GPIO_INT_EDGE_RISING);
-    gpio_init_callback(&enc_a_cb_data, encoder_handler, BIT(enc_a.pin));
-    gpio_add_callback(enc_a.port, &enc_a_cb_data);
-
-    gpio_pin_interrupt_configure_dt(&enc_sw, GPIO_INT_EDGE_RISING);
-    gpio_init_callback(&enc_sw_cb_data, encoder_handler, BIT(enc_sw.pin));
-    gpio_add_callback(enc_sw.port, &enc_sw_cb_data);
-
-
 
     /* B1 User button */
     if (!gpio_is_ready_dt(&user_btn)) {
@@ -472,6 +369,11 @@ int main(void)
     k_sleep(K_MSEC(1000));
 
     display_clear_text();
+
+    menu_init();
+
+    menu_start();
+
     int lora_counter = 0;
     int row=0;
     while (1) {
@@ -505,14 +407,14 @@ int main(void)
         int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
         if (err == -EAGAIN) {
             LOG_DBG("No LoRa RX data yet");
-            display_update_row(7, "No LoRa RX data");
+            // display_update_row(7, "No LoRa RX data");
         } else if (err < 0) {
             LOG_ERR("LoRa RX failed: %d", err);
-            display_update_row(7, "LoRa RX failed: %d", err);
+            // display_update_row(7, "LoRa RX failed: %d", err);
         } else {
             LOG_INF("LoRa RX: %d bytes: %s", err, buf);
             LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
-            display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
+            // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
         }
         row = (row + 1) % 8; // cycle through display rows for updates
 
@@ -531,14 +433,14 @@ int main(void)
 
         ret = gps_get_latest(&pos);
         if (ret == 0 && pos.valid) {
-            display_update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
-            display_update_row(1, "lat%d", pos.latitude);
-            display_update_row(2,"lon%d", pos.longitude);
-            display_update_row(3,"alt%d", (int)(pos.altitude_mm/1000));
-            display_update_row(4,"h:%d v:%d", (int)(pos.horiz_acc_mm), (int)(pos.vert_acc_mm));   
-            display_update_row(5, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
+            // display_update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
+            // display_update_row(1, "lat%d", pos.latitude);
+            // display_update_row(2,"lon%d", pos.longitude);
+            // display_update_row(3,"alt%d", (int)(pos.altitude_mm/1000));
+            // display_update_row(4,"h:%d v:%d", (int)(pos.horiz_acc_mm), (int)(pos.vert_acc_mm));   
+            // display_update_row(5, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
         } else {
-            display_update_row(0, "GPS: No fix");
+            // display_update_row(0, "GPS: No fix");
         }
         // k_sleep(K_SECONDS(1));
     }

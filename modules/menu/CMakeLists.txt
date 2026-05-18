@@ -1,0 +1,5 @@
+if(CONFIG_LIB_MENU)
+  zephyr_library()
+  zephyr_library_sources(src/menu.c)
+  zephyr_include_directories(include)
+endif()

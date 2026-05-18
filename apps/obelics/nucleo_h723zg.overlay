@@ -11,7 +11,7 @@
     };
     
     rotary_encoder: rotary_encoder {
-        compatible = "gpio-keys";
+        compatible = "panoramix,rotary-encoder";   /* custom, no driver binds to this */
         encoder_s: encoder_switch {
             gpios = <&gpiog 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
             label = "Encoder Switch";
