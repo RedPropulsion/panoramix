@@ -177,6 +177,12 @@
         //mcu regulator (not available)
 
     };
+
+    mavlink_rf_usart: mavlink_rf_usart {
+        compatible = "mavlink-wrapper";
+        transport = <&usart3>;
+        serial-interface;
+    };
 };
 
 &pwr {
