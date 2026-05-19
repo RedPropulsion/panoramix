@@ -3,9 +3,9 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/drivers/lora.h>
+// #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
-
+#include <zephyr/drivers/led_strip.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
@@ -39,11 +39,11 @@ static void init_storage(void)
 }
 
 /* ------------------------------------------------------------------ *
- * LoRa
+ * LoRa (disabled - see LoRa-Testing branch)
  * ------------------------------------------------------------------ */
-#define LORA_NODE DT_NODELABEL(lora_sx1261)
-static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
-static struct lora_modem_config lora_tx_config;
+// #define LORA_NODE DT_NODELABEL(lora_sx1261)
+// static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
+// static struct lora_modem_config lora_tx_config;
 
 /* ------------------------------------------------------------------ *
  * Neopixel
@@ -140,13 +140,18 @@ void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_
     }
 }
 
-/* ------------------------------------------------------------------ *
- * Main
- * ------------------------------------------------------------------ */
-int main(void)
-{   
-     LOG_INF("Starting main()");
+/* --- 3. Main Initialization --- */
+int main(void) {
     int ret;
+
+
+    // 1. Enable the neopixel buffer (PE5 HIGH) — MUST happen before led_strip_update_rgb
+    if (!gpio_is_ready_dt(&neopixel_en)) {
+        printk("Error: Neopixel enable pin not ready\n");
+        return -ENODEV;
+    }
+    gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
+    gpio_pin_set_dt(&neopixel_en, 1);
 
     
     udp_client_init();
@@ -176,27 +181,28 @@ int main(void)
     file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
     #endif
 
-    /* Initialize LoRa device */
-    if (!device_is_ready(lora_dev)) {
-        LOG_ERR("LoRa device not ready");
-    } else {
-        lora_tx_config.frequency = 868000000;
-        lora_tx_config.bandwidth = BW_125_KHZ;
-        lora_tx_config.datarate = SF_7;
-        lora_tx_config.coding_rate = CR_4_5;
-        lora_tx_config.preamble_len = 12;
-        lora_tx_config.tx_power = 4;
-        lora_tx_config.tx = true;
-        lora_tx_config.iq_inverted = false;
-        lora_tx_config.public_network = false;
-
-        ret = lora_config(lora_dev, &lora_tx_config);
-        if (ret < 0) {
-            LOG_ERR("LoRa config failed: %d", ret);
-        } else {
-            LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
-        }
-    }
+    /* LoRa disabled - see LoRa-Testing branch */
+    // /* Initialize LoRa device */
+    // if (!device_is_ready(lora_dev)) {
+    //     LOG_ERR("LoRa device not ready");
+    // } else {
+    //     lora_tx_config.frequency = 868000000;
+    //     lora_tx_config.bandwidth = BW_125_KHZ;
+    //     lora_tx_config.datarate = SF_7;
+    //     lora_tx_config.coding_rate = CR_4_5;
+    //     lora_tx_config.preamble_len = 12;
+    //     lora_tx_config.tx_power = 4;
+    //     lora_tx_config.tx = true;
+    //     lora_tx_config.iq_inverted = false;
+    //     lora_tx_config.public_network = false;
+    //
+    //     ret = lora_config(lora_dev, &lora_tx_config);
+    //     if (ret < 0) {
+    //         LOG_ERR("LoRa config failed: %d", ret);
+    //     } else {
+    //         LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+    //     }
+    // }
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
@@ -266,21 +272,21 @@ int main(void)
 
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
-    uint8_t tx_buf[] = "Hello LoRa!";
-    int lora_counter = 0;
+    // uint8_t tx_buf[] = "Hello LoRa!";
+    // int lora_counter = 0;
 
 
     LOG_INF("Starting main loop...\n");
     while (1) {
-        /* LoRa TX every 5 seconds */
-        if (device_is_ready(lora_dev)) {
-            int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
-            if (err == 0) {
-                LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
-            } else {
-                LOG_ERR("LoRa TX failed: %d", err);
-            }
-        }
+        /* LoRa TX disabled - see LoRa-Testing branch */
+        // if (device_is_ready(lora_dev)) {
+        //     int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
+        //     if (err == 0) {
+        //         LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
+        //     } else {
+        //         LOG_ERR("LoRa TX failed: %d", err);
+        //     }
+        // }
 
         memset(pixels, 0, sizeof(pixels));
         if (toggle) {
@@ -288,10 +294,8 @@ int main(void)
         } else {
             pixels[1].b = 128;
         }
-        toggle = !toggle;
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
         k_sleep(K_SECONDS(5));
     }
-    return 0;
 }

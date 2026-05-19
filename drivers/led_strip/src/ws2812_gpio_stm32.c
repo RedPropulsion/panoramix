@@ -95,7 +95,6 @@ static size_t ws2812_stm32_length(const struct device *dev) {
 }
 
 static int ws2812_stm32_init(const struct device *dev) {
-  const struct ws2812_stm32_config *cfg = dev->config;
 
   if (!gpio_is_ready_dt(&pin)) {
     return -ENODEV;

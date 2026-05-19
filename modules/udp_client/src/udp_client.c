@@ -14,7 +14,11 @@ LOG_MODULE_REGISTER(udp_client, LOG_LEVEL_INF);
 #ifdef CONFIG_UDP_CLIENT_SERVER_IP
 #define UDP_SERVER_IP CONFIG_UDP_CLIENT_SERVER_IP
 #else
+<<<<<<<< HEAD:modules/udp_client/src/udp_client.c
 #define UDP_SERVER_IP "192.168.1.3"
+========
+#define UDP_SERVER_IP "192.168.1.1"
+>>>>>>>> c4d20aa (Fix: moved UDP client to separate library.):modules/udp_client/udp_client.c
 #endif
 
 #ifdef CONFIG_UDP_CLIENT_SERVER_PORT
