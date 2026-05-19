@@ -19,7 +19,7 @@ manifest:
           - littlefs
 
     - name: zephyr-mavlink
-      url: https://github.com/tor1kk/zephyr-mavlink.git
+      url: https://github.com/RedPropulsion/zephyr-mavlink.git
       revision: main
       path: modules/zephyr-mavlink
       submodules: true
