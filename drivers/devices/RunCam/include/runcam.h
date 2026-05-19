@@ -40,11 +40,11 @@ extern "C" {
 #define RUNCAM_CMD_5KEY_CONNECTION      0x04U
 
 /* Camera control action codes (used with RUNCAM_CMD_CAMERA_CONTROL) */
-#define RUNCAM_ACTION_WIFI_BTN          0x01U   /* short: WiFi/confirm  */
-#define RUNCAM_ACTION_POWER_BTN         0x02U   /* short: Power/next    */
-#define RUNCAM_ACTION_CHANGE_MODE       0x03U   /* change mode          */
-#define RUNCAM_ACTION_START_RECORDING   0x05U   /* dedicated start      */
-#define RUNCAM_ACTION_STOP_RECORDING    0x06U   /* dedicated stop       */
+#define RUNCAM_ACTION_WIFI_BTN          0x00U   /* short: WiFi/confirm  */
+#define RUNCAM_ACTION_POWER_BTN         0x01U   /* short: Power/next    */
+#define RUNCAM_ACTION_CHANGE_MODE       0x02U   /* change mode          */
+#define RUNCAM_ACTION_START_RECORDING   0x03U   /* dedicated start      */
+#define RUNCAM_ACTION_STOP_RECORDING    0x04U   /* dedicated stop       */
 
 /* Feature flags returned by GET_DEVICE_INFO */
 #define RUNCAM_FEATURE_SIMULATE_POWER_BUTTON    (1U << 0)
@@ -84,8 +84,8 @@ typedef struct {
 /* ── Driver context (opaque to caller) ───────────────────────────────────── */
 
 typedef struct {
-    const struct device        *uart_dev;
-    runcam_device_info_t        info;
+    const struct device        *uart_dev; // Zephyr UART device handle for communication
+    runcam_device_info_t        info; // what the camera told us about itself
     runcam_recording_status_t   recording_status;
 
     /* RX ring buffer for ISR-driven reception */
