@@ -1,0 +1,265 @@
+/dts-v1/;
+#include <st/l4/stm32l412XB.dtsi>
+#include <st/l4/stm32l412rbtxp-pinctrl.dtsi>
+
+#include <zephyr/dt-bindings/led/led.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/dma/stm32_dma.h>
+
+#include <zephyr/dt-bindings/lora/sx126x.h>
+
+/ {
+    model = "CacofonICS";
+    compatible = "cacofonics";
+
+    chosen {
+        zephyr,console = &usart3;
+        zephyr,shell-uart = &usart3;
+        zephyr,sram = &sram0;
+        zephyr,flash = &flash0;
+    };
+
+    leds {
+        compatible = "gpio-leds";
+
+        led_ring: led_ring {
+            gpios = <&gpioc 0 GPIO_ACTIVE_HIGH>;
+            label = "Led Ring";
+        };
+        led_rf_1: led_rf_1 {
+                gpios = <&gpioc 1 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 1";
+        };
+        led_rf_2: led_rf_2 {
+                gpios = <&gpioc 2 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 2";
+        };
+        led_rf_3: led_rf_3 {
+                gpios = <&gpioc 12 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 3";
+        };
+        led_rf_4: led_rf_4 {
+                gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 4";
+        };
+        led_rf_5: led_rf_5 {
+                gpios = <&gpioa 12 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 5";
+        };
+        led_rf_6: led_rf_6 {
+                gpios = <&gpioc 9 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 6";
+        };
+        led_rf_7: led_rf_7 {
+                gpios = <&gpioc 8 GPIO_ACTIVE_HIGH>;
+                label = "LED RF 7";
+        };
+        gps_reset: gps_reset {
+            gpios = <&gpioc 6 GPIO_ACTIVE_LOW>;
+            label = "GPS_RESET";
+        };
+    };
+
+
+    buttons {
+        compatible = "gpio-keys";
+        debounce-interval-ms = <30>;
+        user_button: button_0 {
+            gpios = <&gpioc 13 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            label = "BTN 1 RF";
+        };
+    };
+
+    aliases {
+        error-led = &led_rf_3;
+        lora-led-1 = &led_rf_5;
+        lora-led-2 = &led_rf_6;
+        lora-led-3 = &led_rf_7;
+    };
+
+    // led_strip: led_strip {
+    //     compatible = "worldsemi,ws2812-gpio";
+
+    //     gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+
+    //     chain-length = <6>;
+
+    //     color-mapping = <LED_COLOR_ID_GREEN
+    //                     LED_COLOR_ID_RED
+    //                     LED_COLOR_ID_BLUE>;
+
+    //     delay-t1h = <700>;   
+    //     delay-t1l = <600>;
+    //     delay-t0h = <350>;
+    //     delay-t0l = <800>;
+    //     reset-delay = <8000>;
+    // };
+
+    mavlink_lora: mavlink-wrapper-lora {
+        compatible = "mavlink-wrapper";
+        transport = <&lora0>;
+        lora-interface;
+
+        lora-frequency = <868000000>;
+        lora-bandwidth = <250>;
+        lora-spreading-factor = <8>;
+        lora-coding-rate = <5>;
+        lora-tx-power = <22>;
+        lora-preamble-length = <12>;
+    };
+
+    mavlink_usart: mavlink-wrapper-usart {
+        compatible = "mavlink-wrapper";
+        transport = <&usart1>;
+        serial-interface;
+    };
+};
+
+// Currently broken DO NOT USE
+&clk_hse {
+    clock-frequency = <DT_FREQ_M(48)>;
+    status = "disabled";
+};
+
+&clk_lse {
+    status = "okay";
+    driving-capability = <2>;
+};
+
+// Internal crystal @16 MHz
+&clk_hsi {
+    status = "okay";
+};
+
+&pll {
+    status = "okay";
+    clocks = <&clk_hsi>; // Sets VCO_IN
+
+    div-m = <1>; // Divides VCO_IN
+    mul-n = <10>; // Multiplies VCO_OUT
+
+    div-r = <2>; // Main output clock
+};
+
+&rcc {
+    status = "okay";
+
+    clocks = <&pll>;
+
+    clock-frequency = <DT_FREQ_M(80)>;
+
+    ahb-prescaler = <1>;
+    apb1-prescaler = <1>;
+    apb2-prescaler = <1>;
+};
+
+
+// Configurazione periferiche
+
+
+&i2c1 {
+    status = "okay";
+    pinctrl-0 = <&i2c1_scl_pb6 &i2c1_sda_pb7>;
+    pinctrl-names = "default";
+    clock-frequency = <I2C_BITRATE_STANDARD>; /* 100 kHz */
+
+    gps_m10: gps_m10@42 {
+        compatible = "i2c-device"; /* Usiamo il device I2C generico */
+        reg = <0x42>;              /* Indirizzo di default u-blox */
+        status = "okay";
+    };
+};
+
+
+&spi2 { // Radio LoRa SX1262
+
+    status = "okay";
+    pinctrl-0 = <&spi2_sck_pb13 &spi2_miso_pb14 &spi2_mosi_pb15>;
+    pinctrl-names = "default";
+
+    cs-gpios = <&gpiob 12 GPIO_ACTIVE_LOW>; // chip select
+
+    //clocks = <>, <>;//TODO: set clock configuration
+
+    //DMA: connected both tx and rx
+
+    // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
+
+    lora0: SX1262@0 {
+        compatible = "semtech,sx1262";
+        reg = <0>;
+
+        spi-max-frequency = <2000000>; // può essere aumentato almeno a 8MHz
+
+        reset-gpios = <&gpioa 5 GPIO_ACTIVE_LOW>;
+        busy-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+        dio1-gpios = <&gpioa 6 GPIO_ACTIVE_HIGH>; //generic interrupt line from lora to mcu
+
+        regulator-ldo;
+        dio2-tx-enable;
+        dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8>; //TODO: perchè questo valore?
+
+        // Delay for carrier stability
+        tcxo-power-startup-delay-ms = <5>;
+    };
+};
+
+// Serial communication to MCU
+&usart1 {
+    status = "okay";
+
+    pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
+    pinctrl-names = "default";
+    tx-rx-swap;
+
+    current-speed = <115200>;
+    // usart1 uses the APB1 clock, but adapts it to the selected speed.
+    // Note: 80MHz APB2 clock gives +0.06% error (should be within ± 2.5%).
+
+    // Doesn't use DMAMUX, but instead uses CSELR
+    dmas = <&dma1 4 2 STM32_DMA_PERIPH_TX>,
+           <&dma1 5 2 STM32_DMA_PERIPH_RX>;
+    dma-names = "tx", "rx";
+};
+
+&usart2 { // Seriale per comunicazione ESP32S3
+    //TODO: implement
+    status = "disabled";
+    //PA2 tx
+    //PA3 rx
+    pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+    pinctrl-names = "default";
+
+    current-speed = <115200>;
+};
+
+// Serial communication with STLink
+&usart3 {
+    status = "okay";
+
+    pinctrl-0 = <&usart3_tx_pc10 &usart3_rx_pc11>;
+    pinctrl-names = "default";
+
+    current-speed = <115200>;
+    // usart3 uses the APB1 clock, but adapts it to the selected speed.
+    // Note: 80MHz APB1 clock (MAX) gives +0.06% error (should be within ± 2.5%).
+};
+
+&gpioa {
+    status = "okay";
+};
+&gpiob {
+    status = "okay";
+};
+&gpioc {
+    status = "okay";
+};
+
+&gpioh {
+    status = "okay";
+};
+
+&dma1 {
+    status = "okay";
+};
