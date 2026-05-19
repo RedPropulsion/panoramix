@@ -39,6 +39,8 @@ static void set_servo(uint8_t servo_id, uint32_t deg) {
     LOG_ERR("Invalid servo_id: %d", servo_id);
     return;
   }
+
+  servo_set_position(servos[servo_id], deg * 1000);
 }
 
 static enum smf_state_result boot_run(void *o) {
