@@ -884,6 +884,11 @@
     pinctrl-0 = <&uart5_tx_pc12 &uart5_rx_pb12>;
     pinctrl-names = "default";
     current-speed = <115200>;
+
+    runcam_device: runcam_split4 {
+        compatible = "runcam,split4";
+        status = "okay";
+    };
 };
 
 &uart8 {
