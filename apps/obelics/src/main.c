@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/lora.h>
@@ -245,27 +246,27 @@ int main(void) {
   k_sleep(K_MSEC(500));
 
   servo_set_position(yaw_servo, 0);
-  servo_get_position(yaw_servo, &angle_mdeg);
+  servo_get_position(yaw_servo, &angle_mdeg);  //failt 
   LOG_INF("Initial servo position: %d us", angle_mdeg);
 
   k_sleep(K_MSEC(500));
 
   servo_set_position(pitch_servo,210 * 1000);
-  servo_get_position(pitch_servo, &angle_mdeg);
+  servo_get_position(pitch_servo, &angle_mdeg); // timeout
   LOG_INF("Initial servo position: %d us", angle_mdeg);
 
   k_sleep(K_MSEC(500));
 
   LOG_INF("Rotating servo to 90 degrees...");
   servo_set_position(yaw_servo, 90 * 1000);
-  servo_get_position(yaw_servo, &angle_mdeg);
+  servo_get_position(yaw_servo, &angle_mdeg); // failt
   LOG_INF("Servo position after move: %d us", angle_mdeg);
 
   // servo_ping(yaw_servo);
   // k_sleep(K_MSEC(500));
 
   uint8_t pitch_status;
-  servo_get_status(pitch_servo, &pitch_status);
+  servo_get_status(pitch_servo, &pitch_status); //timeout
   LOG_INF("Pitch servo status: 0x%02X", pitch_status);
 
   // k_sleep(K_MSEC(500));
@@ -275,8 +276,8 @@ int main(void) {
 
   k_msleep(500);
   servo_set_position(pitch_servo, 260 * 1000);
-  servo_get_position(pitch_servo, &angle_mdeg);
-  LOG_INF("Servo position after move: %d us", angle_mdeg);
+  servo_get_position(pitch_servo, &angle_mdeg); //timeout
+  LOG_INF("Servo position after move: %d us", angle_mdeg); // timeout
 
   udp_client_init();
 
@@ -285,11 +286,11 @@ int main(void) {
     LOG_ERR("LoRa device not ready");
   } else {
     lora_tx_config.frequency = 868000000;
-    lora_tx_config.bandwidth = BW_125_KHZ;
-    lora_tx_config.datarate = SF_7;
+    lora_tx_config.bandwidth = BW_250_KHZ;
+    lora_tx_config.datarate = SF_8;
     lora_tx_config.coding_rate = CR_4_5;
     lora_tx_config.preamble_len = 12;
-    lora_tx_config.tx_power = 4;
+    lora_tx_config.tx_power = 14;
     lora_tx_config.tx = true;
     lora_tx_config.iq_inverted = false;
     lora_tx_config.public_network = false;
@@ -298,7 +299,7 @@ int main(void) {
     if (ret < 0) {
       LOG_ERR("LoRa config failed: %s (%d)", strerror(-ret), ret);
     } else {
-      LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+      LOG_INF("LoRa initialized: 868 MHz, SF8, 14 dBm");
     }
   }
 
@@ -374,16 +375,35 @@ int main(void) {
 
   struct led_rgb pixels[NUM_LEDS] = {0};
   bool toggle = false;
-  uint8_t tx_buf[] = "Hello LoRa!";
+  uint8_t buf[255] = {0};
   int lora_counter = 0;
+  int16_t RSSI;
+  int8_t SNR;
+
 
   LOG_INF("Starting main loop...\n");
   while (1) {
+        int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
+        if (err == -EAGAIN) {
+            LOG_DBG("No LoRa RX data yet");
+            // display_update_row(7, "No LoRa RX data");
+        } else if (err < 0) {
+            LOG_ERR("LoRa RX failed: %d", err);
+            // display_update_row(7, "LoRa RX failed: %d", err);
+        } else {
+            // LOG_INF("LoRa RX: %d bytes: %s", err, buf);
+            LOG_HEXDUMP_INF(buf, err, "Received data:");
+            LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
+            // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
+        }
+
+    k_sleep(K_MSEC(50));
+
     /* LoRa TX every 5 seconds */
     if (device_is_ready(lora_dev)) {
-      int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
+      err = lora_send(lora_dev, buf, err);
       if (err == 0) {
-        LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
+        LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(buf));
       } else {
         LOG_ERR("LoRa TX failed: %s (%d)", strerror(-err), err);
       }
@@ -398,7 +418,7 @@ int main(void) {
     toggle = !toggle;
 
     led_strip_update_rgb(strip, pixels, NUM_LEDS);
-    k_sleep(K_SECONDS(5));
+    // k_sleep(K_SECONDS(5));
   }
   return 0;
 }

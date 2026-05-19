@@ -123,6 +123,10 @@
     pinctrl-names = "default";
     current-speed = <1000000>;
 
+    dmas = <&dmamux1 0 44 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>,
+           <&dmamux1 1 43 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>;
+    dma-names = "tx", "rx";
+
     yaw_servo: yaw_servo {
         status = "okay";
         compatible = "waveshare,st3215";
