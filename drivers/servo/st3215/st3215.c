@@ -43,7 +43,6 @@
 
 LOG_MODULE_REGISTER(st3215_servo, LOG_LEVEL_DBG);
 
-
 #define RX_DONE BIT(0)
 #define TX_DONE BIT(1)
 
@@ -100,13 +99,13 @@ static void st3215_uart_callback(const struct device *dev,
   case UART_TX_DONE:
     bus->tx_status = 0;
     LOG_WRN("TX DONE");
-    k_event_post(&uart_servo_bus_event,TX_DONE);
+    k_event_post(&uart_servo_bus_event, TX_DONE);
     break;
 
   case UART_TX_ABORTED:
     LOG_WRN("TX ABORTED");
     bus->tx_status = -EIO;
-    k_event_post(&uart_servo_bus_event,TX_DONE);
+    k_event_post(&uart_servo_bus_event, TX_DONE);
     break;
 
   case UART_RX_RDY:
@@ -114,14 +113,14 @@ static void st3215_uart_callback(const struct device *dev,
     bus->rx_len = evt->data.rx.len;
     bus->rx_offset = evt->data.rx.offset;
     bus->rx_status = 0;
-    k_event_post(&uart_servo_bus_event,RX_DONE);
+    k_event_post(&uart_servo_bus_event, RX_DONE);
     break;
 
   case UART_RX_STOPPED:
     LOG_WRN("RX STOPPED");
     bus->rx_len = evt->data.rx_stop.data.len;
     bus->rx_status = 0;
-    k_event_post(&uart_servo_bus_event,RX_DONE);
+    k_event_post(&uart_servo_bus_event, RX_DONE);
     // k_sem_give(&bus->rx_done);
     break;
 
@@ -137,9 +136,10 @@ static void st3215_uart_callback(const struct device *dev,
     }
     break;
   case UART_RX_BUF_RELEASED:
-  LOG_WRN("RX BUF RELEASED");
-  LOG_HEXDUMP_DBG(bus->cur_rx_buf, sizeof(bus->cur_rx_buf), "RX Buf: ");
-  LOG_HEXDUMP_DBG(bus->next_rx_buf, sizeof(bus->next_rx_buf), "RX Buf next: ");
+    LOG_WRN("RX BUF RELEASED");
+    LOG_HEXDUMP_DBG(bus->cur_rx_buf, sizeof(bus->cur_rx_buf), "RX Buf: ");
+    LOG_HEXDUMP_DBG(bus->next_rx_buf, sizeof(bus->next_rx_buf),
+                    "RX Buf next: ");
     if (evt->data.rx_buf.buf == bus->rx_buf) {
       bus->cur_rx_buf = bus->rx_buf2;
     } else if (evt->data.rx_buf.buf == bus->rx_buf2) {
@@ -153,15 +153,15 @@ static void st3215_uart_callback(const struct device *dev,
   }
 }
 
-static int st3215_bus_tx(struct device *dev, const uint8_t *data,
+static int st3215_bus_tx(const struct device *dev, const uint8_t *data,
                          size_t len) {
   int ret;
   struct st3215_bus *bus = &__bus_state;
   LOG_WRN("TX SEMAPHORE AWAIT");
   k_sem_take(&bus->tx_done, K_FOREVER);
   LOG_WRN("TX SEMAPHORE TAKEN");
-  memset(bus->tx_buf,0,sizeof(bus->tx_buf));
-  memcpy(bus->tx_buf,data,len);
+  memset(bus->tx_buf, 0, sizeof(bus->tx_buf));
+  memcpy(bus->tx_buf, data, len);
   bus->tx_status = -EAGAIN;
 
   ret = uart_tx(bus->uart_dev, bus->tx_buf, len, SYS_FOREVER_US);
@@ -174,7 +174,7 @@ static int st3215_bus_tx(struct device *dev, const uint8_t *data,
   LOG_WRN("WAITING TX END EVENT");
   k_event_wait_safe(&uart_servo_bus_event, TX_DONE, false, K_FOREVER);
   LOG_WRN("TX END EVENT RECEIVED");
-  
+
   if (bus->tx_status < 0) {
     LOG_ERR("TX failed: %d", bus->tx_status);
     k_sem_give(&bus->tx_done);
@@ -186,7 +186,7 @@ static int st3215_bus_tx(struct device *dev, const uint8_t *data,
   return 0;
 }
 
-static int st3215_bus_rx(struct device *dev,uint32_t timeout_ms) {
+static int st3215_bus_rx(const struct device *dev, uint32_t timeout_ms) {
   int ret;
   struct st3215_bus *bus = &__bus_state;
   struct st3215_data *data = dev->data;
@@ -207,7 +207,7 @@ static int st3215_bus_rx(struct device *dev,uint32_t timeout_ms) {
     return ret;
   }
   LOG_WRN("RX DONE AWAIT");
-  k_event_wait_safe(&uart_servo_bus_event, RX_DONE,false, K_FOREVER);
+  k_event_wait_safe(&uart_servo_bus_event, RX_DONE, false, K_FOREVER);
   LOG_WRN("RX DONE RCVED");
 
   if (bus->rx_status < 0) {
@@ -224,7 +224,8 @@ static int st3215_bus_rx(struct device *dev,uint32_t timeout_ms) {
     return -EIO;
   }
 
-  memcpy(data->rx_buff+bus->rx_offset, bus->cur_rx_buf, sizeof(bus->rx_buf)-bus->rx_offset);
+  memcpy(data->rx_buff + bus->rx_offset, bus->cur_rx_buf,
+         sizeof(bus->rx_buf) - bus->rx_offset);
   data->rx_len = bus->rx_len;
   LOG_WRN("TX SEMAPHORE RELEASED");
   k_sem_give(&bus->rx_done);
@@ -239,11 +240,11 @@ static int st3215_bus_rx(struct device *dev,uint32_t timeout_ms) {
   }
 
   // uart_rx_disable(bus->uart_dev);
-  
+
   return bus->rx_len;
 }
 
-static int st3215_send_packet(struct device *dev, uint8_t servo_id,
+static int st3215_send_packet(const struct device *dev, uint8_t servo_id,
                               uint8_t instruction, const uint8_t *params,
                               size_t param_len) {
   size_t packet_len = 6 + param_len;
@@ -274,46 +275,46 @@ static int st3215_send_packet(struct device *dev, uint8_t servo_id,
   return st3215_bus_tx(dev, packet, packet_len);
 }
 
-static int st3215_read_response(struct device *dev, uint32_t timeout_ms) {
+static int st3215_read_response(const struct device *dev, uint32_t timeout_ms) {
   return st3215_bus_rx(dev, timeout_ms);
 }
 
-static int st3215_enable_torque(struct device *dev, uint8_t servo_id) {
+static int st3215_enable_torque(const struct device *dev, uint8_t servo_id) {
   uint8_t params[2] = {ST3215_REG_TORQUE_ENABLE, 1};
 
   return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
 }
 
-static int st3215_disable_torque(struct device *dev, uint8_t servo_id) {
+static int st3215_disable_torque(const struct device *dev, uint8_t servo_id) {
   uint8_t params[2] = {ST3215_REG_TORQUE_ENABLE, 0};
 
   return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
 }
 
-static int st3215_set_status_return_level(struct device *dev,
+static int st3215_set_status_return_level(const struct device *dev,
                                           uint8_t servo_id) {
   uint8_t params[2] = {ST3215_REG_STATUS_RETURN, 1};
 
   return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
 }
 
-static int st3215_set_operating_mode(struct device *dev, uint8_t servo_id) {
+static int st3215_set_operating_mode(const struct device *dev, uint8_t servo_id) {
   uint8_t params[2] = {ST3215_REG_OPERATING_MODE, 0};
 
   return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
 }
 
-static int st3215_unlock_eeprom(struct device *dev, uint8_t servo_id) {
-  uint8_t params[2] = {ST3215_REG_LOCK, 0};
+// static int st3215_unlock_eeprom(struct device *dev, uint8_t servo_id) {
+//   uint8_t params[2] = {ST3215_REG_LOCK, 0};
 
-  return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
-}
+//   return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
+// }
 
-static int st3215_lock_eeprom(struct device *dev, uint8_t servo_id) {
-  uint8_t params[2] = {ST3215_REG_LOCK, 1};
+// static int st3215_lock_eeprom(struct device *dev, uint8_t servo_id) {
+//   uint8_t params[2] = {ST3215_REG_LOCK, 1};
 
-  return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
-}
+//   return st3215_send_packet(dev, servo_id, ST3215_INST_WRITE, params, 2);
+// }
 
 static int st3215_set_position(const struct device *dev, int32_t angle_mdeg) {
   const struct st3215_config *config = dev->config;
