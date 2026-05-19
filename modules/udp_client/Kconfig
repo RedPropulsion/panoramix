@@ -1,0 +1,42 @@
+config UDP_CLIENT
+    bool "UDP Client"
+    default n
+    help
+        Enable UDP client for network communication
+
+if UDP_CLIENT
+
+config UDP_CLIENT_SERVER_IP
+    string "UDP server IP address"
+    default "192.168.1.1"
+    help
+        IP address of the UDP server to send data to
+
+config UDP_CLIENT_SERVER_PORT
+    int "UDP server port"
+    default 14550
+    range 1 65535
+    help
+        UDP port of the server to send data to
+
+config UDP_CLIENT_LOCAL_PORT
+    int "UDP local receiving port"
+    default 14551
+    range 1 65535
+    help
+        Local UDP port for receiving responses
+
+config UDP_CLIENT_STACK_SIZE
+    int "UDP client thread stack size"
+    default 2048
+    help
+        Stack size for the UDP client thread
+
+config UDP_CLIENT_PRIORITY
+    int "UDP client thread priority"
+    default 5
+    range 0 64
+    help
+        Thread priority (lower = higher priority)
+
+endif

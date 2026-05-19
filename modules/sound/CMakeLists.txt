@@ -1,0 +1,5 @@
+if(CONFIG_LIB_SOUND)
+  zephyr_library()
+  zephyr_library_sources(src/sound.c)
+  zephyr_include_directories(include)
+endif()

@@ -27,6 +27,10 @@ jobs:
           app-path: app
           toolchains: arm-zephyr-eabi
 
-      - name: Build
+      - name: Build AsterICS
         run: |
-          west build app/apps/asterics
+          west build app/apps/asterics -p
+
+      - name: Build ObelICS
+        run: |
+          west build app/apps/obelics -p
