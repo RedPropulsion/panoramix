@@ -244,21 +244,25 @@ int main(void) {
   LOG_INF("%p", response_data);
 
   k_sleep(K_MSEC(500));
-
+  
+  LOG_INF("YAW - SET - 0");
   servo_set_position(yaw_servo, 0);
+  LOG_INF("YAW - GET");
   servo_get_position(yaw_servo, &angle_mdeg);  //failt 
   LOG_INF("Initial servo position: %d us", angle_mdeg);
 
   k_sleep(K_MSEC(500));
-
+  LOG_INF("PITCH - SET - 210");
   servo_set_position(pitch_servo,210 * 1000);
+  LOG_INF("PITCH - GET");
   servo_get_position(pitch_servo, &angle_mdeg); // timeout
   LOG_INF("Initial servo position: %d us", angle_mdeg);
 
   k_sleep(K_MSEC(500));
-
-  LOG_INF("Rotating servo to 90 degrees...");
+  
+  LOG_INF("YAW - SET - 90");
   servo_set_position(yaw_servo, 90 * 1000);
+  LOG_INF("YAW - GET");
   servo_get_position(yaw_servo, &angle_mdeg); // failt
   LOG_INF("Servo position after move: %d us", angle_mdeg);
 
@@ -266,6 +270,7 @@ int main(void) {
   // k_sleep(K_MSEC(500));
 
   uint8_t pitch_status;
+  LOG_INF("YAW - GET - STATUS");
   servo_get_status(pitch_servo, &pitch_status); //timeout
   LOG_INF("Pitch servo status: 0x%02X", pitch_status);
 

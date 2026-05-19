@@ -36,6 +36,7 @@ static inline int servo_get_position(const struct device *dev,
   return api->get_position(dev, angle_mdeg);
 }
 
+//TODO: cleanup
 static inline int servo_set_speed(const struct device *dev,
                                   uint16_t speed) {
   const struct servo_driver_api *api = dev->api;

@@ -20,8 +20,4 @@ properties:
     required: false
     default: 0
     description: Goal time in milliseconds (0=use speed register)
-  dir-gpios:
-    type: phandle-array
-    required: false
-    description: Direction control GPIO (output high for TX, low for RX)
 
