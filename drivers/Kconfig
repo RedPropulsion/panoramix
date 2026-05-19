@@ -1,5 +1,5 @@
-
 menu "Drivers"
-rsource "sensor/Kconfig"
 rsource "led_strip/Kconfig"
+rsource "sensor/Kconfig"
+rsource "servo/Kconfig"
 endmenu

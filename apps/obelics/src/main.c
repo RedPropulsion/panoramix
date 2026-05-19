@@ -11,113 +11,33 @@
 #include <zephyr/drivers/led_strip.h>
 #include "sound.h"
 #include "udp_client.h"
+#include "file_logger.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 /* ------------------------------------------------------------------ *
- * SD Card / FATFS
+ * File logger
  * ------------------------------------------------------------------ */
-#ifdef CONFIG_FAT_FILESYSTEM_ELM
-#include <ff.h>
-#include <string.h>
-/* FatFs work area */
-FATFS fatfs_fs;
-/* mounting info */
-static struct fs_mount_t fat_fs_mnt = {
-	.type = FS_FATFS,
-	.fs_data = &fatfs_fs,
-	.mnt_point = "/SD:"
-};
 
+static struct file_logger_file log_file;
 
-static int lsdir(const char *path)
+static void init_storage(void)
 {
-	int res;
-	struct fs_dir_t dirp;
-	static struct fs_dirent entry;
-	
-	fs_dir_t_init(&dirp);
-	
-	/* Verify fs_opendir() */
-	res = fs_opendir(&dirp, path);
-	if (res) {
-		LOG_WRN("Error opening dir %s [%d]", path, res);
-		return res;
-	}
-	
-	LOG_INF("Listing dir %s ...", path);
-	for (;;) {
-		/* Verify fs_readdir() */
-		res = fs_readdir(&dirp, &entry);
-		
-		/* entry.name[0] == 0 means end-of-dir */
-		if (res || entry.name[0] == 0) {
-			break;
-		}
-		
-		if (entry.type == FS_DIR_ENTRY_DIR) {
-			if(strchr(entry.name, '~') != NULL){
-				LOG_INF("[DIR ] %s", entry.name);
-			}
+    int ret = file_logger_init();
+    if (ret < 0) {
+        LOG_ERR("Failed to init file logger: %d", ret);
+        return;
+    }
 
-		} else {
-			if(entry.name[0] != '_'){
-				LOG_INF("[FILE] %s (size = %zu)",
-					entry.name, entry.size);
-			}
+    ret = file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
+    if (ret < 0) {
+        LOG_ERR("Failed to open log file: %d", ret);
+        return;
+    }
 
-		}
-	}
-	
-	/* Verify fs_closedir() */
-	fs_closedir(&dirp);
-	
-	return res;
+    LOG_INF("File logger initialized and log file opened");
 }
 
-static int fatfs_mount()
-{
-	/* raw disk i/o */
-	do {
-		static const char *disk_pdrv = "SD";
-		uint64_t memory_size_mb;
-		uint32_t block_count;
-		uint32_t block_size;
-		
-		if (disk_access_init(disk_pdrv) != 0) {
-			LOG_ERR("Storage init ERROR!");
-			break;
-		}
-		
-		if (disk_access_ioctl(disk_pdrv,
-			DISK_IOCTL_GET_SECTOR_COUNT, &block_count)) {
-				LOG_ERR("Unable to get sector count");
-				break;
-			}
-		LOG_INF("Block count %u", block_count);
-		
-		if (disk_access_ioctl(disk_pdrv,
-			DISK_IOCTL_GET_SECTOR_SIZE, &block_size)) {
-				LOG_ERR("Unable to get sector size");
-				break;
-			}
-		LOG_INF("Sector size %u", block_size);
-		
-		memory_size_mb = (uint64_t)block_count * block_size;
-		LOG_INF("Memory Size(MB) %u", (uint32_t)(memory_size_mb >> 20));
-	} while (0);
-
-	int res = fs_mount(&fat_fs_mnt);
-	
-	if (res == 0) {
-		LOG_INF("SD Card mounted.");
-		lsdir(fat_fs_mnt.mnt_point);
-	} else {
-		LOG_WRN("Error mounting disk.\n");
-	}	
-	return 0;
-}
-#endif
 /* ------------------------------------------------------------------ *
  * LoRa
  * ------------------------------------------------------------------ */
@@ -231,6 +151,31 @@ int main(void)
     
     udp_client_init();
 
+    #ifdef CONFIG_FAT_FILESYSTEM_ELM
+    /* Initialize file logger */
+    init_storage();
+
+    /* Write test message to log file */
+    ret = file_logger_write_str(&log_file, "Start\n");
+    if (ret < 0) {
+        LOG_ERR("Failed to write to log file: %d", ret);
+    } else {
+        file_logger_flush(&log_file);
+        LOG_DBG("Wrote test to log file"); 
+    }
+
+    /* Read back to verify */
+    file_logger_seek(&log_file, 0, FS_SEEK_SET);
+    char read_buff[64];
+    int len = file_logger_read_str(&log_file, read_buff, sizeof(read_buff));
+    LOG_INF("Log file content (%d bytes): %s", len, read_buff);
+
+    /* Clear log file content by removing and recreating it */
+    file_logger_close(&log_file);
+    file_logger_remove("/SD:/packets.log");
+    file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
+    #endif
+
     /* Initialize LoRa device */
     if (!device_is_ready(lora_dev)) {
         LOG_ERR("LoRa device not ready");
@@ -252,15 +197,6 @@ int main(void)
             LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
         }
     }
-
-    /* Mount SD card */
-    
-    // LOG_INF("Initializing SD card");
-    // #ifdef CONFIG_FAT_FILESYSTEM_ELM
-    // LOG_INF("Mounting SD card...");
-    // fatfs_mount();
-    // #endif
-    
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
