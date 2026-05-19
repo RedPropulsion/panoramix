@@ -1,4 +1,5 @@
-#include <string.h>
+#include <mavwrap.h>
+
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/uart.h>
@@ -9,9 +10,12 @@
 #include <zephyr/sensing/sensing.h>
 
 #include <stddef.h>
+#include <string.h>
 
 LOG_MODULE_REGISTER(main);
 
+static const struct device *mavlink_usart =
+    DEVICE_DT_GET(DT_NODELABEL(mavlink_usart));
 const struct device *ms5611 = DEVICE_DT_GET(DT_NODELABEL(mcu_ms5611));
 SENSOR_DT_READ_IODEV(mcu_ms5611_iodev, DT_NODELABEL(mcu_ms5611),
                      {
@@ -74,86 +78,102 @@ static uint8_t rx_buffer2[256] = {0};
 static uint8_t *active_buf = rx_buffer1;
 static uint8_t *next_buf = NULL;
 
-void rx_callback(const struct device *dev, struct uart_event *evt,
-                 void *user_data) {
+// void rx_callback(const struct device *dev, struct uart_event *evt,
+//                  void *user_data) {
+//
+//   uint8_t *data;
+//   int err;
+//
+//   switch (evt->type) {
+//
+//   case UART_RX_RDY:
+//     data = evt->data.rx.buf + evt->data.rx.offset;
+//     size_t len = evt->data.rx.len;
+//     if (len > 0) {
+//       LOG_INF("RX %d bytes: %.*s", len, len, data);
+//     }
+//     break;
+//
+//   case UART_RX_BUF_REQUEST:
+//     if (next_buf == NULL) {
+//       next_buf = rx_buffer2;
+//       err = uart_rx_buf_rsp(dev, next_buf, sizeof(rx_buffer2));
+//       if (err < 0) {
+//         LOG_ERR("Failed to provide second buffer: %s", strerror(-err));
+//       }
+//     }
+//     break;
+//
+//   case UART_RX_BUF_RELEASED:
+//     if (evt->data.rx_buf.buf == rx_buffer1) {
+//       active_buf = rx_buffer2;
+//     } else if (evt->data.rx_buf.buf == rx_buffer2) {
+//       active_buf = rx_buffer1;
+//     }
+//     next_buf = NULL;
+//     break;
+//
+//   case UART_RX_DISABLED:
+//     next_buf = NULL;
+//     active_buf = rx_buffer1;
+//     err = uart_rx_enable(dev, rx_buffer1, sizeof(rx_buffer1) - 1,
+//                          10 * USEC_PER_MSEC);
+//     if (err < 0) {
+//       LOG_ERR("Failed to re-enable RX: %s", strerror(-err));
+//     }
+//     break;
+//
+//   case UART_RX_STOPPED:
+//     LOG_WRN("RX stopped, reason: %d", evt->data.rx_stop.reason);
+//     break;
+//
+//   case UART_TX_DONE:
+//     LOG_INF("Message sent!");
+//     break;
+//
+//   default:
+//     break;
+//   }
+// }
 
-  uint8_t *data;
-  int err;
+static void usart_rx_callback(const struct device *dev,
+                              const mavlink_message_t *msg, void *user_data) {
+  mavlink_ping_t ping;
 
-  switch (evt->type) {
+  LOG_INF("USART: Got msgid: %d", msg->msgid);
 
-  case UART_RX_RDY:
-    data = evt->data.rx.buf + evt->data.rx.offset;
-    size_t len = evt->data.rx.len;
-    if (len > 0) {
-      LOG_INF("RX %d bytes: %.*s", len, len, data);
-    }
-    break;
+  mavlink_msg_ping_decode(msg, &ping);
 
-  case UART_RX_BUF_REQUEST:
-    if (next_buf == NULL) {
-      next_buf = rx_buffer2;
-      err = uart_rx_buf_rsp(dev, next_buf, sizeof(rx_buffer2));
-      if (err < 0) {
-        LOG_ERR("Failed to provide second buffer: %s", strerror(-err));
-      }
-    }
-    break;
-
-  case UART_RX_BUF_RELEASED:
-    if (evt->data.rx_buf.buf == rx_buffer1) {
-      active_buf = rx_buffer2;
-    } else if (evt->data.rx_buf.buf == rx_buffer2) {
-      active_buf = rx_buffer1;
-    }
-    next_buf = NULL;
-    break;
-
-  case UART_RX_DISABLED:
-    next_buf = NULL;
-    active_buf = rx_buffer1;
-    err = uart_rx_enable(dev, rx_buffer1, sizeof(rx_buffer1) - 1,
-                         10 * USEC_PER_MSEC);
-    if (err < 0) {
-      LOG_ERR("Failed to re-enable RX: %s", strerror(-err));
-    }
-    break;
-
-  case UART_RX_STOPPED:
-    LOG_WRN("RX stopped, reason: %d", evt->data.rx_stop.reason);
-    break;
-
-  case UART_TX_DONE:
-    LOG_INF("Message sent!");
-    break;
-
-  default:
-    break;
-  }
+  LOG_INF("time_usec: %d", ping.time_usec);
 }
 
 int main(void) {
   LOG_INF("The board started!");
   const uint8_t message[] = "Hi CacofonICS!";
 
-  int err = uart_callback_set(cacofonics_usart, rx_callback, NULL);
-  if (err < 0) {
-    LOG_ERR("Unable to set rx callback for cacofonics usart: %s",
-            strerror(-err));
-    return 1;
-  }
+  mavwrap_start(mavlink_usart, usart_rx_callback, NULL);
 
-  err = uart_rx_enable(cacofonics_usart, rx_buffer1, sizeof(rx_buffer1) - 1,
-                       10 * USEC_PER_MSEC);
-  if (err < 0) {
-    LOG_ERR("Unable to enable rx for cacofonics usart: %s", strerror(-err));
-    return 1;
-  }
+  // int err = uart_callback_set(cacofonics_usart, rx_callback, NULL);
+  // if (err < 0) {
+  //   LOG_ERR("Unable to set rx callback for cacofonics usart: %s",
+  //           strerror(-err));
+  //   return 1;
+  // }
+  //
+  // err = uart_rx_enable(cacofonics_usart, rx_buffer1, sizeof(rx_buffer1) - 1,
+  //                      10 * USEC_PER_MSEC);
+  // if (err < 0) {
+  //   LOG_ERR("Unable to enable rx for cacofonics usart: %s", strerror(-err));
+  //   return 1;
+  // }
 
   while (1) {
     k_sleep(K_MSEC(5000));
+    mavlink_message_t msg;
+    mavlink_msg_ping_pack(1, 1, &msg, 69420, 1, 4, 1);
 
-    err = uart_tx(cacofonics_usart, message, sizeof(message), 10 * 1000);
+    // int err = uart_tx(cacofonics_usart, message, sizeof(message), 10 * 1000);
+    int err = mavwrap_send_message(mavlink_usart, &msg);
     if (err < 0) {
       LOG_ERR("Unable to send data: %s", strerror(-err));
       return 1;

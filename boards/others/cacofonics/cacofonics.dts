@@ -71,6 +71,13 @@
         };
     };
 
+    aliases {
+        error-led = &led_rf_3;
+        lora-led-1 = &led_rf_5;
+        lora-led-2 = &led_rf_6;
+        lora-led-3 = &led_rf_7;
+    };
+
     // led_strip: led_strip {
     //     compatible = "worldsemi,ws2812-gpio";
 
@@ -89,6 +96,24 @@
     //     reset-delay = <8000>;
     // };
 
+    mavlink_lora: mavlink-wrapper-lora {
+        compatible = "mavlink-wrapper";
+        transport = <&lora0>;
+        lora-interface;
+
+        lora-frequency = <868000000>;
+        lora-bandwidth = <250>;
+        lora-spreading-factor = <8>;
+        lora-coding-rate = <5>;
+        lora-tx-power = <22>;
+        lora-preamble-length = <12>;
+    };
+
+    mavlink_usart: mavlink-wrapper-usart {
+        compatible = "mavlink-wrapper";
+        transport = <&usart1>;
+        serial-interface;
+    };
 };
 
 // Currently broken DO NOT USE
@@ -159,7 +184,7 @@
 
     //DMA: connected both tx and rx
 
-// Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
+    // Tutorial: https://github.com/zephyrproject-rtos/zephyr/blob/main/samples/drivers/lora/receive/README.rst
 
     lora0: SX1262@0 {
         compatible = "semtech,sx1262";
@@ -175,8 +200,8 @@
         dio2-tx-enable;
         dio3-tcxo-voltage = <SX126X_DIO3_TCXO_1V8>; //TODO: perchè questo valore?
 
-		tcxo-power-startup-delay-ms = <5>; //FIXME: frfr non so come influisca @signo-codebase
-
+        // Delay for carrier stability
+        tcxo-power-startup-delay-ms = <5>;
     };
 };
 
