@@ -1,0 +1,7 @@
+description: RunCam Split 4 Device Protocol over UART
+
+compatible: "runcam,split4"
+
+include: base.yaml
+
+bus: uart
