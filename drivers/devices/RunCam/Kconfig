@@ -1,0 +1,23 @@
+menuconfig RUNCAM
+    bool "RunCam Split 4 Device Protocol support"
+    default y
+    depends on DT_HAS_RUNCAM_SPLIT4_ENABLED 
+    select SERIAL
+    select UART_INTERRUPT_DRIVEN
+    help
+      Enables support for the RunCam Device protocol.
+      Allows you to start/stop recording and read camera information via UART.
+
+if RUNCAM
+
+config RUNCAM_INIT_PRIORITY
+    int "RunCam driver init priority"
+    default 90
+    help
+      Initialization priority of RunCam driver
+
+module = RUNCAM
+module-str = runcam
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # RUNCAM
