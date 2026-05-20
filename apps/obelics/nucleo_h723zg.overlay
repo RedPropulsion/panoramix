@@ -46,6 +46,33 @@
 				(PWM_POLARITY_INVERTED | STM32_PWM_COMPLEMENTARY)>;
 		};
 	};
+    
+    mavlink_lora: mavlink-wrapper-lora {
+        compatible = "mavlink-wrapper";
+        transport = <&lora_sx1261>;
+        lora-interface;
+
+        lora-frequency = <868000000>;
+        lora-bandwidth = <125>;
+        lora-spreading-factor = <7>;
+        lora-coding-rate = <5>;
+        lora-tx-power = <14>;
+        lora-preamble-length = <12>;
+    };
+
+
+
+    mavlink_netif: mavlink-wrapper-netif {
+        compatible = "mavlink-wrapper";
+        transport = <&mac>;
+        net-interface;
+        net-type = "udp";
+
+        local-ip = "192.168.1.100";
+        local-port = <14560>;
+        remote-ip = "192.168.1.101";
+        remote-port = <14561>;
+    };
 
 };
 
@@ -106,6 +133,9 @@
         busy-gpios = <&gpioe 13 (GPIO_PULL_UP | GPIO_ACTIVE_HIGH)>;
     };
 };
+
+
+
 
 
 /**********************************************/

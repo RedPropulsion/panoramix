@@ -5,15 +5,64 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
-
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
+
+#include <mavwrap.h>
 #include "sound.h"
 #include "udp_client.h"
 #include "file_logger.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+
+
+
+/* ------------------------------------------------------------------ *
+ * MavWrap
+ * ------------------------------------------------------------------ */
+#define RX_QUEUE_SIZE 16
+
+static const struct device *mavlink_lora =
+    DEVICE_DT_GET(DT_NODELABEL(mavlink_lora));
+ 
+static const struct device *mavlink_udp =
+    DEVICE_DT_GET(DT_NODELABEL(mavlink_netif));
+// K_MSGQ_DEFINE(rx_queue, sizeof(mavlink_message_t), RX_QUEUE_SIZE,
+//               sizeof(void *));
+
+
+static void lora_rx_callback(const struct device *dev,
+                              const mavlink_message_t *msg, void *user_data) {
+  LOG_INF("Received Packet!");
+  // int ret = k_msgq_put(&rx_queue, msg, K_NO_WAIT);
+  // if (ret < 0) {
+  //   LOG_ERR("Queue overflow, clearing...");
+  //   k_msgq_purge(&rx_queue);
+  //   k_msgq_put(&rx_queue, msg, K_NO_WAIT);
+  // }
+
+  int from_lora = dev == mavlink_lora;
+
+  LOG_INF("%s: Got msgid: %d", from_lora ? "LORA" : "UDP", msg->msgid);
+
+  struct mavwrap_stats stats;
+  int ret = mavwrap_get_stats(dev, &stats);
+  if (ret < 0) {
+    LOG_ERR("\tCouldn't get %s stats: %s", from_lora ? "LORA" : "UDP",
+            strerror(-ret));
+  } else {
+    if (from_lora) {
+      LOG_INF("\tRSSI: %d\tSNR: %d", stats.rx_rssi, stats.rx_snr);
+      // lora_set_state_led(stats.rx_snr);
+    }
+    if (stats.tx_errors) {
+      LOG_WRN("\ttx errors: %d", stats.tx_errors);
+    }
+  }
+
+  mavwrap_send_message(from_lora ? mavlink_udp : mavlink_udp, msg);
+}
 
 /* ------------------------------------------------------------------ *
  * File logger
@@ -148,8 +197,9 @@ int main(void)
      LOG_INF("Starting main()");
     int ret;
 
-    
-    udp_client_init();
+    mavwrap_start(mavlink_lora, lora_rx_callback, NULL);
+    mavwrap_start(mavlink_udp, lora_rx_callback, NULL);
+    // udp_client_init();
 
     #ifdef CONFIG_FAT_FILESYSTEM_ELM
     /* Initialize file logger */
@@ -176,27 +226,27 @@ int main(void)
     file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
     #endif
 
-    /* Initialize LoRa device */
-    if (!device_is_ready(lora_dev)) {
-        LOG_ERR("LoRa device not ready");
-    } else {
-        lora_tx_config.frequency = 868000000;
-        lora_tx_config.bandwidth = BW_125_KHZ;
-        lora_tx_config.datarate = SF_7;
-        lora_tx_config.coding_rate = CR_4_5;
-        lora_tx_config.preamble_len = 12;
-        lora_tx_config.tx_power = 4;
-        lora_tx_config.tx = true;
-        lora_tx_config.iq_inverted = false;
-        lora_tx_config.public_network = false;
+    // /* Initialize LoRa device */
+    // if (!device_is_ready(lora_dev)) {
+    //     LOG_ERR("LoRa device not ready");
+    // } else {
+    //     lora_tx_config.frequency = 868000000;
+    //     lora_tx_config.bandwidth = BW_125_KHZ;
+    //     lora_tx_config.datarate = SF_7;
+    //     lora_tx_config.coding_rate = CR_4_5;
+    //     lora_tx_config.preamble_len = 12;
+    //     lora_tx_config.tx_power = 4;
+    //     lora_tx_config.tx = true;
+    //     lora_tx_config.iq_inverted = false;
+    //     lora_tx_config.public_network = false;
 
-        ret = lora_config(lora_dev, &lora_tx_config);
-        if (ret < 0) {
-            LOG_ERR("LoRa config failed: %d", ret);
-        } else {
-            LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
-        }
-    }
+    //     ret = lora_config(lora_dev, &lora_tx_config);
+    //     if (ret < 0) {
+    //         LOG_ERR("LoRa config failed: %d", ret);
+    //     } else {
+    //         LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+    //     }
+    // }
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
@@ -273,14 +323,14 @@ int main(void)
     LOG_INF("Starting main loop...\n");
     while (1) {
         /* LoRa TX every 5 seconds */
-        if (device_is_ready(lora_dev)) {
-            int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
-            if (err == 0) {
-                LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
-            } else {
-                LOG_ERR("LoRa TX failed: %d", err);
-            }
-        }
+        // if (device_is_ready(lora_dev)) {
+        //     int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
+        //     if (err == 0) {
+        //         LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
+        //     } else {
+        //         LOG_ERR("LoRa TX failed: %d", err);
+        //     }
+        // }
 
         memset(pixels, 0, sizeof(pixels));
         if (toggle) {
