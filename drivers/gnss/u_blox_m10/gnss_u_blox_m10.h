@@ -41,9 +41,10 @@ struct gps_position {
 };
 
 /**
- * @brief Get the latest GPS position
+ * @brief Parse latest raw data and get position
  *
- * Non-blocking - just reads from ring buffer
+ * If parsed data is older than 300ms, attempts to parse the latest raw frame.
+ * Always returns the best available parsed data.
  *
  * @param pos Pointer to position structure to fill
  * @return 0 on success, -ENODATA if no valid data
@@ -52,6 +53,8 @@ int gps_get_latest(struct gps_position *pos);
 
 /**
  * @brief Get latest position if it's fresh enough
+ *
+ * Only returns pre-parsed data. Does NOT trigger parsing.
  *
  * @param pos Pointer to position structure to fill
  * @param max_age_ms Maximum age in milliseconds
@@ -76,43 +79,28 @@ bool gps_has_fix(void);
 /**
  * @brief Get latitude in degrees (scaled by 1e-7)
  *
- * @return Latitude in 1e-7 degrees
+ * Returns from cached parsed data only, does not trigger parsing.
+ *
+ * @return Latitude in 1e-7 degrees (0 if no valid data)
  */
-static inline int32_t gps_get_latitude(void)
-{
-    struct gps_position pos;
-    if (gps_get_latest(&pos) == 0 && pos.valid) {
-        return pos.latitude;
-    }
-    return 0;
-}
+int32_t gps_get_latitude(void);
 
 /**
  * @brief Get longitude in degrees (scaled by 1e-7)
  *
- * @return Longitude in 1e-7 degrees
+ * Returns from cached parsed data only, does not trigger parsing.
+ *
+ * @return Longitude in 1e-7 degrees (0 if no valid data)
  */
-static inline int32_t gps_get_longitude(void)
-{
-    struct gps_position pos;
-    if (gps_get_latest(&pos) == 0 && pos.valid) {
-        return pos.longitude;
-    }
-    return 0;
-}
+int32_t gps_get_longitude(void);
 
 /**
  * @brief Get altitude in mm above mean sea level
  *
- * @return Altitude in mm
+ * Returns from cached parsed data only, does not trigger parsing.
+ *
+ * @return Altitude in mm (0 if no valid data)
  */
-static inline int32_t gps_get_altitude(void)
-{
-    struct gps_position pos;
-    if (gps_get_latest(&pos) == 0 && pos.valid) {
-        return pos.altitude_mm;
-    }
-    return 0;
-}
+int32_t gps_get_altitude(void);
 
 #endif /* _PANORAMIX_GPS_H_ */

@@ -1,11 +1,3 @@
-/*
- * Copyright (c) 2024
- * SPDX-License-Identifier: Apache-2.0
- *
- * u-blox M10 GNSS driver over I2C with non-blocking API
- * Uses Zephyr's UBX parsing library
- */
-
 #include <string.h>
 #include <stdlib.h>
 #include <zephyr/kernel.h>
@@ -13,7 +5,6 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/device.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/atomic.h>
 #include <zephyr/modem/ubx/protocol.h>
 
 #include "gnss_u_blox_m10_i2c.h"
@@ -23,15 +14,27 @@ LOG_MODULE_REGISTER(gnss_u_blox_m10, CONFIG_GNSS_LOG_LEVEL);
 
 #define M10_GNSS_NODE DT_NODELABEL(gps)
 
-#define RING_BUFFER_SIZE 2
+#define RAW_FRAME_MAX_SIZE 256
+#define PARSE_FRESHNESS_THRESHOLD_MS 300
 
 struct m10_data {
-    struct gps_position ring_buffer[RING_BUFFER_SIZE];
-    atomic_t write_idx;
-    atomic_t read_idx;
-    uint8_t parse_buf[256];
+    struct k_mutex lock;
+
+    /* Parsed result (read by getters, written by parser) */
+    struct gps_position parsed_data;
+    uint32_t parsed_timestamp_us;
+    bool parsed_data_ready;
+
+    /* Latest complete raw UBX frame (written by acquire thread, read by parser) */
+    uint8_t latest_raw_frame[RAW_FRAME_MAX_SIZE];
+    size_t latest_raw_frame_len;
+    bool raw_frame_ready;
+
+    /* Parse state machine (owned by acquire thread) */
+    uint8_t parse_buf[RAW_FRAME_MAX_SIZE];
     size_t parse_len;
     bool awaiting_sync;
+
     bool configured;
 };
 
@@ -331,7 +334,6 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
             ret = m10_configure(NULL);
             if (ret == 0) {
                 data->configured = true;
-                // LOG_DBG("M10 configuration successful!");
             } else {
                 config_retry_count++;
                 LOG_WRN("M10 config attempt %d/5 failed", config_retry_count);
@@ -362,8 +364,8 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
             avail = sizeof(data->parse_buf);
         }
 
-        /* Read data - sequential write register address then read */
-        uint8_t reg = M10_REG_DATA;
+        /* Read data */
+        reg = M10_REG_DATA;
         ret = i2c_write_dt(&cfg->i2c, &reg, 1);
         if (ret < 0) {
             LOG_DBG("M10: write reg failed: %d", ret);
@@ -381,22 +383,18 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
             ret = avail;
         }
 
-        /* Parse UBX messages */
-        bool found_ubx = false;
-
+        /* Run state machine to find complete UBX frames */
         for (size_t i = 0; i < ret; i++) {
             uint8_t c = data->parse_buf[i];
 
             if (c == UBX_PREAMBLE_SYNC_CHAR_1 && (i + 1) < ret && data->parse_buf[i + 1] == UBX_PREAMBLE_SYNC_CHAR_2) {
                 data->parse_len = 0;
                 data->awaiting_sync = true;
-                found_ubx = true;
             }
 
             if (data->awaiting_sync && data->parse_len < sizeof(data->parse_buf)) {
                 data->parse_buf[data->parse_len++] = c;
 
-                /* Full frame received? (sync + class + id + len + payload + checksum) */
                 if (data->parse_len >= 6) {
                     uint16_t payload_len = data->parse_buf[4] | (data->parse_buf[5] << 8);
                     size_t frame_len = 6 + payload_len + 2;
@@ -408,76 +406,17 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
                     }
 
                     if (data->parse_len >= frame_len) {
-                        if (data->parse_buf[2] == UBX_CLASS_ID_NAV &&
-                            data->parse_buf[3] == UBX_MSG_ID_NAV_PVT) {
-
-                            struct gps_position pos;
-                            memset(&pos, 0, sizeof(pos));
-                            pos.cpu_timestamp_us = k_ticks_to_us_ceil32(k_cycle_get_32());
-
-                            int parse_ret = m10_parse_ubx_nav_pvt(&pos, data->parse_buf + 6, payload_len);
-                            if (parse_ret == 0 && pos.valid) {
-                                LOG_DBG_RATELIMIT_RATE(1000,"GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
-                                        "lat=%d, lon=%d, alt=%dmm | "
-                                        "sats=%d, fix=%d, hdop=%d | "
-                                        "speed=%dmm/s, heading=%d.%05d | "
-                                        "acc: horiz=%umm, vert=%umm | "
-                                        "gps_ns=%llu, cpu_us=%u",
-                                        pos.day, pos.month, pos.year,
-                                        pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
-                                        pos.latitude, pos.longitude, pos.altitude_mm,
-                                        pos.satellites, pos.fix_type, pos.hdop,
-                                        pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
-                                        pos.horiz_acc_mm, pos.vert_acc_mm,
-                                        pos.gps_timestamp_ns, pos.cpu_timestamp_us);
-                                atomic_t write_idx = atomic_get(&data->write_idx);
-                                data->ring_buffer[write_idx] = pos;
-                                atomic_inc(&data->write_idx);
-                                if (atomic_get(&data->write_idx) >= RING_BUFFER_SIZE) {
-                                    atomic_set(&data->write_idx, 0);
-                                }
-                            }
+                        /* Complete frame found - copy to latest_raw_frame under lock */
+                        k_mutex_lock(&data->lock, K_FOREVER);
+                        if (frame_len <= RAW_FRAME_MAX_SIZE) {
+                            memcpy(data->latest_raw_frame, data->parse_buf, frame_len);
+                            data->latest_raw_frame_len = frame_len;
+                            data->raw_frame_ready = true;
                         }
+                        k_mutex_unlock(&data->lock);
+
                         data->awaiting_sync = false;
                         data->parse_len = 0;
-                    }
-                }
-            }
-        }
-
-        if (ret > 10) {
-            for (size_t i = 0; i < ret - 5; i++) {
-                if (data->parse_buf[i] == '$' && i + 80 < ret) {
-                    size_t nmea_end = i;
-                    for (size_t j = i + 4; j < ret && j < i + 100; j++) {
-                        if (data->parse_buf[j] == '\n' || data->parse_buf[j] == '\r') {
-                            nmea_end = j;
-                            break;
-                        }
-                    }
-                    if (nmea_end > i + 10 && nmea_end < i + 100) {
-                        char nmea_str[100];
-                        for (size_t k = 0; k < nmea_end - i && k < sizeof(nmea_str)-1; k++) {
-                            nmea_str[k] = data->parse_buf[i + k];
-                        }
-                        nmea_str[nmea_end - i] = 0;
-
-                        struct gps_position pos;
-                        memset(&pos, 0, sizeof(pos));
-                        pos.cpu_timestamp_us = k_ticks_to_us_ceil32(k_cycle_get_32());
-
-                        if (m10_parse_nmea_gga(&pos, nmea_str) == 0 && pos.valid) {
-                            LOG_DBG_RATELIMIT("GPS NMEA: lat=%d, lon=%d, alt=%dmm, sats=%d, fix=%d",
-                                    pos.latitude, pos.longitude, pos.altitude_mm,
-                                    pos.satellites, pos.fix_type);
-                            atomic_t write_idx = atomic_get(&data->write_idx);
-                            data->ring_buffer[write_idx] = pos;
-                            atomic_inc(&data->write_idx);
-                            if (atomic_get(&data->write_idx) >= RING_BUFFER_SIZE) {
-                                atomic_set(&data->write_idx, 0);
-                            }
-                            break;
-                        }
                     }
                 }
             }
@@ -487,56 +426,188 @@ static void m10_acquire_thread(void *p1, void *p2, void *p3)
 
 K_THREAD_DEFINE(m10_acquire_tid, 1024, m10_acquire_thread, &m10_data_instance, NULL, NULL, 3, 0, 0);
 
-int gps_get_latest(struct gps_position *pos)
+/**
+ * @brief Parse the latest raw UBX frame and update parsed_data
+ *
+ * Must be called with data->lock held.
+ *
+ * @return 0 on success, -ENODATA if no raw frame available, -EINVAL if parse failed
+ */
+static int m10_do_parse(struct m10_data *data)
+{
+    if (!data->raw_frame_ready) {
+        return -ENODATA;
+    }
+
+    if (data->latest_raw_frame_len < 6) {
+        return -EINVAL;
+    }
+
+    uint16_t payload_len = data->latest_raw_frame[4] | (data->latest_raw_frame[5] << 8);
+
+    if (data->latest_raw_frame[2] != UBX_CLASS_ID_NAV ||
+        data->latest_raw_frame[3] != UBX_MSG_ID_NAV_PVT) {
+        return -EINVAL;
+    }
+
+    struct gps_position pos;
+    memset(&pos, 0, sizeof(pos));
+    pos.cpu_timestamp_us = k_ticks_to_us_ceil32(k_cycle_get_32());
+
+    int ret = m10_parse_ubx_nav_pvt(&pos, data->latest_raw_frame + 6, payload_len);
+    if (ret != 0 || !pos.valid) {
+        return -EINVAL;
+    }
+
+    LOG_DBG_RATELIMIT_RATE(1000, "GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
+            "lat=%d, lon=%d, alt=%dmm | "
+            "sats=%d, fix=%d, hdop=%d | "
+            "speed=%dmm/s, heading=%d.%05d | "
+            "acc: horiz=%umm, vert=%umm | "
+            "gps_ns=%llu, cpu_us=%u",
+            pos.day, pos.month, pos.year,
+            pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
+            pos.latitude, pos.longitude, pos.altitude_mm,
+            pos.satellites, pos.fix_type, pos.hdop,
+            pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
+            pos.horiz_acc_mm, pos.vert_acc_mm,
+            pos.gps_timestamp_ns, pos.cpu_timestamp_us);
+
+    data->parsed_data = pos;
+    data->parsed_timestamp_us = pos.cpu_timestamp_us;
+    data->parsed_data_ready = true;
+    data->raw_frame_ready = false;
+
+    return 0;
+}
+
+/**
+ * @brief Parse latest raw data if parsed data is stale
+ *
+ * If parsed data is older than PARSE_FRESHNESS_THRESHOLD_MS, attempts to parse
+ * the latest raw frame. Always returns the best available parsed data.
+ *
+ * @param pos Pointer to position structure to fill
+ * @return 0 on success, -ENODATA if no valid data available
+ */
+static int gps_parse_latest(struct gps_position *pos)
 {
     struct m10_data *data = &m10_data_instance;
-    atomic_t idx = atomic_get(&data->read_idx);
-    *pos = data->ring_buffer[idx];
+
+    k_mutex_lock(&data->lock, K_FOREVER);
+
+    bool need_parse = false;
+    if (data->parsed_data_ready) {
+        uint32_t now_us = k_ticks_to_us_ceil32(k_cycle_get_32());
+        uint32_t age_us = now_us - data->parsed_timestamp_us;
+        if ((age_us / 1000) > PARSE_FRESHNESS_THRESHOLD_MS) {
+            need_parse = true;
+        }
+    } else {
+        need_parse = true;
+    }
+
+    if (need_parse && data->raw_frame_ready) {
+        m10_do_parse(data);
+    }
+
+    if (!data->parsed_data_ready) {
+        k_mutex_unlock(&data->lock);
+        return -ENODATA;
+    }
+
+    *pos = data->parsed_data;
+    k_mutex_unlock(&data->lock);
+
     return 0;
+}
+
+int gps_get_latest(struct gps_position *pos)
+{
+    return gps_parse_latest(pos);
 }
 
 int gps_get_latest_if_fresh(struct gps_position *pos, uint32_t max_age_ms)
 {
     struct m10_data *data = &m10_data_instance;
-    struct gps_position tmp;
-    atomic_t write_idx = atomic_get(&data->write_idx);
-    atomic_t read_idx = atomic_get(&data->read_idx);
 
-    if (write_idx == read_idx) {
-        return -ENODATA;
-    }
+    k_mutex_lock(&data->lock, K_FOREVER);
 
-    tmp = data->ring_buffer[read_idx];
-    if (!tmp.valid) {
+    if (!data->parsed_data_ready) {
+        k_mutex_unlock(&data->lock);
         return -ENODATA;
     }
 
     uint32_t now_us = k_ticks_to_us_ceil32(k_cycle_get_32());
-    uint32_t age_us = now_us - tmp.cpu_timestamp_us;
+    uint32_t age_us = now_us - data->parsed_timestamp_us;
     if ((age_us / 1000) > max_age_ms) {
+        k_mutex_unlock(&data->lock);
         return -ETIMEDOUT;
     }
 
-    *pos = tmp;
+    *pos = data->parsed_data;
+    k_mutex_unlock(&data->lock);
+
     return 0;
 }
 
 uint8_t gps_get_satellites(void)
 {
-    struct gps_position pos;
-    if (gps_get_latest(&pos) == 0 && pos.valid) {
-        return pos.satellites;
-    }
-    return 0;
+    struct m10_data *data = &m10_data_instance;
+
+    k_mutex_lock(&data->lock, K_FOREVER);
+    uint8_t sats = (data->parsed_data_ready && data->parsed_data.valid)
+                   ? data->parsed_data.satellites : 0;
+    k_mutex_unlock(&data->lock);
+
+    return sats;
 }
 
 bool gps_has_fix(void)
 {
-    struct gps_position pos;
-    if (gps_get_latest(&pos) == 0 && pos.valid && pos.fix_type >= 3) {
-        return true;
-    }
-    return false;
+    struct m10_data *data = &m10_data_instance;
+
+    k_mutex_lock(&data->lock, K_FOREVER);
+    bool fix = data->parsed_data_ready && data->parsed_data.valid && data->parsed_data.fix_type >= 3;
+    k_mutex_unlock(&data->lock);
+
+    return fix;
+}
+
+int32_t gps_get_latitude(void)
+{
+    struct m10_data *data = &m10_data_instance;
+
+    k_mutex_lock(&data->lock, K_FOREVER);
+    int32_t lat = (data->parsed_data_ready && data->parsed_data.valid)
+                  ? data->parsed_data.latitude : 0;
+    k_mutex_unlock(&data->lock);
+
+    return lat;
+}
+
+int32_t gps_get_longitude(void)
+{
+    struct m10_data *data = &m10_data_instance;
+
+    k_mutex_lock(&data->lock, K_FOREVER);
+    int32_t lon = (data->parsed_data_ready && data->parsed_data.valid)
+                  ? data->parsed_data.longitude : 0;
+    k_mutex_unlock(&data->lock);
+
+    return lon;
+}
+
+int32_t gps_get_altitude(void)
+{
+    struct m10_data *data = &m10_data_instance;
+
+    k_mutex_lock(&data->lock, K_FOREVER);
+    int32_t alt = (data->parsed_data_ready && data->parsed_data.valid)
+                  ? data->parsed_data.altitude_mm : 0;
+    k_mutex_unlock(&data->lock);
+
+    return alt;
 }
 
 static int m10_init(const struct device *dev)
@@ -549,10 +620,15 @@ static int m10_init(const struct device *dev)
         return -ENODEV;
     }
 
+    k_mutex_init(&data->lock);
+
     data->parse_len = 0;
     data->awaiting_sync = false;
-    atomic_set(&data->write_idx, 0);
-    atomic_set(&data->read_idx, 0);
+    data->raw_frame_ready = false;
+    data->latest_raw_frame_len = 0;
+    data->parsed_data_ready = false;
+    data->parsed_timestamp_us = 0;
+    memset(&data->parsed_data, 0, sizeof(data->parsed_data));
     data->configured = false;
 
     ret = m10_configure(dev);
