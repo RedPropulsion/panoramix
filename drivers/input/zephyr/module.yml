@@ -1,0 +1,4 @@
+name: encoder_input
+build:
+  cmake: .
+  kconfig: Kconfig

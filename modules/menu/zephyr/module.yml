@@ -1,0 +1,4 @@
+name: menu
+build:
+  cmake: .
+  kconfig: Kconfig
