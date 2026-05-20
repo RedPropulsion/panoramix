@@ -1,6 +1,10 @@
+#include <common/mavlink.h>
+#include <common/mavlink_msg_command_long.h>
+#include <common/mavlink_msg_ping.h>
+#include <mavlink_types.h>
 #include <stdint.h>
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(menu, LOG_LEVEL_DBG);
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -10,12 +14,20 @@ LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <mavwrap.h>
+
 #include "menu.h"
 #include <encoder_input.h>
+
 
 #define MIN_REDRAW_MS CONFIG_LIB_MENU_MIN_REDRAW_MS
 
 K_SEM_DEFINE(menu_data_sem, 0, 1);
+
+struct cmd_devices {
+    struct device *mav_lora;
+    struct device *mav_udp;
+}__mav_devices;
 
 struct menu_display_data menu_data = {0};
 
@@ -131,6 +143,16 @@ static void menu_redraw(void)
 
 static void menu_handle_event(enum encoder_event evt)
 {
+    const char *evt_names[] = {
+        [ENCODER_ROTATE_CW] = "ROTATE_CW",
+        [ENCODER_ROTATE_CCW] = "ROTATE_CCW",
+        [ENCODER_DOUBLE_PRESS] = "DOUBLE_PRESS",
+        [ENCODER_PRESS_ROTATE_CW] = "PRESS_ROTATE_CW",
+        [ENCODER_PRESS_ROTATE_CCW] = "PRESS_ROTATE_CCW",
+    };
+    LOG_INF("Menu EVT: %s (sel=%d confirm=%d active_draw=%d)",
+            evt_names[evt], state.selected, state.showing_confirmation, state.active_draw_fn != NULL);
+
     if (state.showing_confirmation) {
         switch (evt) {
         case ENCODER_DOUBLE_PRESS:
@@ -155,30 +177,43 @@ static void menu_handle_event(enum encoder_event evt)
         if (state.selected < state.current->item_count - 1) {
             state.selected++;
             update_scroll();
+            LOG_INF("Menu: sel++ -> %d", state.selected);
+        } else {
+            LOG_INF("Menu: sel at bottom, ignored");
         }
         break;
     case ENCODER_ROTATE_CCW:
         if (state.selected > 0) {
             state.selected--;
             update_scroll();
+            LOG_INF("Menu: sel-- -> %d", state.selected);
+        } else {
+            LOG_INF("Menu: sel at top, ignored");
         }
         break;
     case ENCODER_DOUBLE_PRESS: {
         struct menu_item *item = &state.current->items[state.selected];
+        LOG_INF("Menu: DOUBLE_PRESS on '%s' (draw=%d sub=%d act=%d conf=%d)",
+                item->label, item->draw_fn != NULL, item->submenu != NULL,
+                item->action_fn != NULL, item->needs_confirmation);
         if (item->draw_fn) {
             state.active_draw_fn = item->draw_fn;
             state.active_title = item->label;
             clear_display();
+            LOG_INF("Menu: entered draw_fn '%s'", item->label);
         } else if (item->submenu) {
             state.current = item->submenu;
             state.selected = 0;
             state.scroll_offset = 0;
+            LOG_INF("Menu: entered submenu '%s'", item->label);
         } else if (item->action_fn) {
             if (item->needs_confirmation) {
                 state.showing_confirmation = true;
                 state.confirming_item = item;
+                LOG_INF("Menu: showing confirmation for '%s'", item->label);
             } else {
                 item->action_fn();
+                LOG_INF("Menu: executed action '%s'", item->label);
             }
 }
         break;
@@ -188,27 +223,37 @@ static void menu_handle_event(enum encoder_event evt)
             break;
         }
         struct menu_item *item = &state.current->items[state.selected];
+        LOG_INF("Menu: PRESS_ROTATE_CW on '%s' (draw=%d sub=%d)",
+                item->label, item->draw_fn != NULL, item->submenu != NULL);
         if (item->draw_fn) {
             state.active_draw_fn = item->draw_fn;
             state.active_title = item->label;
             clear_display();
+            LOG_INF("Menu: entered draw_fn '%s'", item->label);
         } else if (item->submenu) {
             state.current = item->submenu;
             state.selected = 0;
             state.scroll_offset = 0;
             clear_display();
+            LOG_INF("Menu: entered submenu '%s'", item->label);
         }
         break;
     }
     case ENCODER_PRESS_ROTATE_CCW:
+        LOG_INF("Menu: PRESS_ROTATE_CCW (active_draw=%d parent=%d)",
+                state.active_draw_fn != NULL, state.current->parent != NULL);
         if (state.active_draw_fn) {
             state.active_draw_fn = NULL;
             state.active_title = NULL;
             clear_display();
+            LOG_INF("Menu: exited draw_fn, back to menu");
         } else if (state.current->parent) {
             state.current = state.current->parent;
             state.selected = 0;
             state.scroll_offset = 0;
+            LOG_INF("Menu: exited to parent menu");
+        } else {
+            LOG_INF("Menu: PRESS_ROTATE_CCW ignored (no parent, no active_draw)");
         }
         break;
     }
@@ -216,13 +261,16 @@ static void menu_handle_event(enum encoder_event evt)
 
 void menu_thread(void *p1, void *p2, void *p3)
 {
+    LOG_INF("Menu: Thread Started");
     k_poll_event_init(&events[0], K_POLL_TYPE_MSGQ_DATA_AVAILABLE,
                       K_POLL_MODE_NOTIFY_ONLY, &encoder_msgq);
     k_poll_event_init(&events[1], K_POLL_TYPE_SEM_AVAILABLE,
                       K_POLL_MODE_NOTIFY_ONLY, &menu_data_sem);
 
 while (1) {
+        LOG_DBG("Waiting for menu events");
         k_poll(events, 2, K_FOREVER);
+        LOG_DBG("Updating Menu");
 
         bool user_input = false;
         bool data_changed = false;
@@ -257,6 +305,7 @@ static struct k_thread menu_thread_data;
 
 void menu_start(void)
 {
+    LOG_DBG("Starting menu thread");
     k_thread_create(&menu_thread_data, menu_stack,
                     K_THREAD_STACK_SIZEOF(menu_stack),
                     menu_thread, NULL, NULL, NULL,
@@ -379,14 +428,24 @@ static void cmd_arm_disarm(void)
     LOG_INF("MAVLink: Would send ARM/DISARM command");
 }
 
-static void cmd_request_telemetry(void)
+static void cmd_set_manual_mode(void)
 {
-    LOG_INF("MAVLink: Would send Request Telemetry");
+    LOG_INF("MAVLink: Setting Manual Mode");
+    mavlink_message_t msg;
+
+    mavlink_msg_command_long_pack(1, 69, &msg, 1,1, MAV_CMD_DO_SET_MODE , MAV_MODE_MANUAL_DISARMED, 0, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+    
+    mavwrap_send_message(__mav_devices.mav_lora, &msg);
 }
 
-static void cmd_set_lora_channel(void)
+static void cmd_do_wiggle_servo(void)
 {
-    LOG_INF("MAVLink: Would send Set LoRa Channel");
+    LOG_INF("MAVLink: Setting Servo");
+
+    mavlink_message_t msg;
+    mavlink_msg_command_long_pack(1, 69, &msg, 1,1, MAV_CMD_DO_SET_SERVO , 0 , 30, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+    
+    mavwrap_send_message(__mav_devices.mav_lora, &msg);
 }
 
 static void cmd_reboot(void)
@@ -396,10 +455,11 @@ static void cmd_reboot(void)
 
 static struct menu_item commands_items[] = {
     {"Arm/Disarm", NULL, cmd_arm_disarm, NULL, true},
-    {"Request Telemetry", NULL, cmd_request_telemetry, NULL, false},
-    {"Set LoRa Channel", NULL, cmd_set_lora_channel, NULL, true},
-    {"Reboot", NULL, cmd_reboot, NULL, true},
+    {"Set Manual Mode", NULL, cmd_set_manual_mode, NULL, false},
+    {"Wiggle Servo", NULL, cmd_do_wiggle_servo, NULL, true},
+    {"CAGA", NULL, cmd_reboot, NULL, true},
 };
+
 
 static struct menu_item main_items[] = {
     {"COMMS",    draw_comms_screen,  NULL, NULL, false},
@@ -425,6 +485,8 @@ static struct menu commands_menu = {
 static void display_init(void)
 {
     disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
+
+    
     if (!device_is_ready(disp)) {
         LOG_ERR("Display not ready");
         return;
@@ -441,8 +503,12 @@ static void display_init(void)
     LOG_INF("Display initialized for menu");
 }
 
-int menu_init(void)
+int menu_init(const struct device *mav_lora,const  struct device *mav_udp)
 {
+    __mav_devices.mav_lora = mav_lora;
+    __mav_devices.mav_udp = mav_udp;
+
+
     encoder_input_init();
 
     display_init();

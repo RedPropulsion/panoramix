@@ -74,7 +74,7 @@ struct menu_display_data {
 extern struct menu_display_data menu_data;
 extern struct k_sem menu_data_sem;
 
-int menu_init(void);
+int menu_init(const struct device *mav_lora,const struct device *mav_udp);
 
 void menu_start(void);
 
