@@ -323,7 +323,9 @@
 
     //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
     ina219_mcu: ina219@41 {
-        compatible = "ti,ina219";
+        status = "okay";
+
+        compatible = "ti,ina219-rtio";
         reg = <0x41>;
 
         //required
@@ -339,7 +341,7 @@
     };
 
     ina219_rf: ina219@42 {
-        compatible = "ti,ina219";
+        compatible = "ti,ina219-rtio";
         reg = <0x42>;
 
         //required
