@@ -1,10 +1,18 @@
-#include <zephyr/kernel.h>
+#include <stdint.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
-#include <zephyr/drivers/pwm.h>
-#include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
+#include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/servo.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
+
+#include "sound.h"
+#include "udp_client.h"
+#include <zephyr/drivers/led_strip.h>
+#include <zephyr/fs/fs.h>
+#include <zephyr/storage/disk_access.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/fs/fs.h>
@@ -21,6 +29,12 @@
 #include "file_logger.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+
+#include <zephyr/drivers/uart.h>
+
+const struct device *yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
+const struct device *pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
+
 
 /* ------------------------------------------------------------------ *
  * File logger
@@ -55,8 +69,8 @@ static struct lora_modem_config lora_tx_config;
 /* ------------------------------------------------------------------ *
  * Neopixel
  * ------------------------------------------------------------------ */
-#define STRIP_NODE  DT_NODELABEL(led_strip)
-#define NUM_LEDS    DT_PROP(STRIP_NODE, chain_length)
+#define STRIP_NODE DT_NODELABEL(led_strip)
+#define NUM_LEDS DT_PROP(STRIP_NODE, chain_length)
 
 static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
@@ -105,24 +119,23 @@ void button_handler(const struct device *dev, struct gpio_callback *cb,
  * LED blink timers
  * ------------------------------------------------------------------ */
 struct led_data {
-    struct gpio_dt_spec gpio;
-    struct k_timer timer;
-    int index;
+  struct gpio_dt_spec gpio;
+  struct k_timer timer;
+  int index;
 };
 
 static struct led_data leds[] = {
-    { .gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios), .index = 0 },
-    { .gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios), .index = 1 },
-    { .gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios), .index = 2 }
-};
+    {.gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios), .index = 0},
+    {.gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios), .index = 1},
+    {.gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios), .index = 2}};
 
 volatile int selected_led = 0;
 volatile uint32_t intervals[] = {500, 500, 500};
 
 void led_timer_handler(struct k_timer *timer_id) {
-    struct led_data *led = CONTAINER_OF(timer_id, struct led_data, timer);
-    gpio_pin_toggle_dt(&led->gpio);
-    k_timer_start(&led->timer, K_MSEC(intervals[led->index]), K_NO_WAIT);
+  struct led_data *led = CONTAINER_OF(timer_id, struct led_data, timer);
+  gpio_pin_toggle_dt(&led->gpio);
+  k_timer_start(&led->timer, K_MSEC(intervals[led->index]), K_NO_WAIT);
 }
 
 /* ------------------------------------------------------------------ *
@@ -146,7 +159,52 @@ int main(void)
 {   
      LOG_INF("Starting main()");
     int ret;
+    
 
+    int32_t angle_mdeg;
+    void *response_data = &angle_mdeg;
+    LOG_INF("%p", response_data);
+
+    k_sleep(K_MSEC(500));
+
+    LOG_INF("YAW - SET - 0");
+    servo_set_position(yaw_servo, 0);
+    LOG_INF("YAW - GET");
+    servo_get_position(yaw_servo, &angle_mdeg);  //failt 
+    LOG_INF("Initial servo position: %d us", angle_mdeg);
+
+    k_sleep(K_MSEC(500));
+    LOG_INF("PITCH - SET - 210");
+    servo_set_position(pitch_servo,210 * 1000);
+    LOG_INF("PITCH - GET");
+    servo_get_position(pitch_servo, &angle_mdeg); // timeout
+    LOG_INF("Initial servo position: %d us", angle_mdeg);
+
+    k_sleep(K_MSEC(500));
+
+    LOG_INF("YAW - SET - 90");
+    servo_set_position(yaw_servo, 90 * 1000);
+    LOG_INF("YAW - GET");
+    servo_get_position(yaw_servo, &angle_mdeg); // failt
+    LOG_INF("Servo position after move: %d us", angle_mdeg);
+
+    // servo_ping(yaw_servo);
+    // k_sleep(K_MSEC(500));
+
+    uint8_t pitch_status;
+    LOG_INF("YAW - GET - STATUS");
+    servo_get_status(pitch_servo, &pitch_status); //timeout
+    LOG_INF("Pitch servo status: 0x%02X", pitch_status);
+
+    // k_sleep(K_MSEC(500));
+
+    // servo_ping(pitch_servo);
+
+
+    k_msleep(500);
+    servo_set_position(pitch_servo, 260 * 1000);
+    servo_get_position(pitch_servo, &angle_mdeg); //timeout
+    LOG_INF("Servo position after move: %d us", angle_mdeg); // timeout 
     
     
 
