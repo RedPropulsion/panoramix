@@ -2,3 +2,4 @@ CompileFlags:
   Remove:
     - -mfp16-format=ieee
     - -fno-reorder-functions
+    - -fno-printf-return-value

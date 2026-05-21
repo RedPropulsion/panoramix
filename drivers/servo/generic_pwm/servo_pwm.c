@@ -36,7 +36,7 @@ static int servo_pwm_set_position(const struct device *dev,
 
   ret = pwm_set_pulse_dt(&cfg->pwm, pulse_ns);
   if (ret < 0) {
-    LOG_ERR("Failed to set PWM pulse: %d", ret);
+    LOG_ERR("Failed to set PWM pulse: %s", strerror(-ret));
     return ret;
   }
 
@@ -71,7 +71,6 @@ static DEVICE_API(servo, servo_pwm_api) = {
 };
 
 #define SERVO_PWM_INIT(inst)                                                   \
-  static struct servo_pwm_data servo_pwm_data_##inst;                          \
   static const struct servo_pwm_config servo_pwm_cfg_##inst = {                \
       .pwm = PWM_DT_SPEC_INST_GET(inst),                                       \
       .min_pulse_ns = DT_INST_PROP(inst, min_pulse),                           \
