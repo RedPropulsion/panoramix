@@ -11,9 +11,10 @@ LOG_MODULE_REGISTER(servo_pwm, CONFIG_SERVO_LOG_LEVEL);
 
 struct servo_pwm_config {
   struct pwm_dt_spec pwm;
-  uint32_t min_pulse_ns;   /* pulse width at 0 mdeg, nanoseconds */
-  uint32_t max_pulse_ns;   /* pulse width at max_angle_mdeg, nanoseconds */
-  uint32_t max_angle_mdeg; /* full-range angle in milli-degrees */
+  uint32_t min_pulse_ns;       /* pulse width at 0 mdeg, nanoseconds */
+  uint32_t max_pulse_ns;       /* pulse width at max_angle_mdeg, nanoseconds */
+  uint32_t max_angle_mdeg;     /* full-range angle in milli-degrees */
+  uint32_t initial_angle_mdeg; /* angle to set on power on */
 };
 
 static int servo_pwm_set_position(const struct device *dev,
@@ -62,6 +63,11 @@ static int servo_pwm_init(const struct device *dev) {
 
   LOG_DBG("ready: min=%u ns, max=%u ns, range=%u mdeg", cfg->min_pulse_ns,
           cfg->max_pulse_ns, cfg->max_angle_mdeg);
+
+  int ret = servo_pwm_set_position(dev, cfg->initial_angle_mdeg);
+  if (ret < 0) {
+    LOG_ERR("Failed to set initial servo angle");
+  }
   return 0;
 }
 
@@ -76,7 +82,7 @@ static DEVICE_API(servo, servo_pwm_api) = {
       .min_pulse_ns = DT_INST_PROP(inst, min_pulse),                           \
       .max_pulse_ns = DT_INST_PROP(inst, max_pulse),                           \
       .max_angle_mdeg = DT_INST_PROP(inst, max_angle),                         \
-  };                                                                           \
+      .initial_angle_mdeg = DT_INST_PROP(inst, initial_angle)};                \
   DEVICE_DT_INST_DEFINE(inst, servo_pwm_init, NULL, NULL,                      \
                         &servo_pwm_cfg_##inst, POST_KERNEL,                    \
                         CONFIG_SERVO_INIT_PRIORITY, &servo_pwm_api);

@@ -116,6 +116,7 @@
             min-pulse = <PWM_USEC(500)>;
             max-pulse = <PWM_USEC(2500)>;
             max-angle = <270000>; // in mdeg
+            initial-angle = <0>;  // in mdeg
         };
 
         servo_main_pwm: servo_main_pwm {
@@ -127,6 +128,7 @@
             min-pulse = <PWM_USEC(500)>;
             max-pulse = <PWM_USEC(2500)>;
             max-angle = <270000>; // in mdeg
+            initial-angle = <0>;  // in mdeg
         };
     };
 
@@ -171,7 +173,7 @@
 
             startup-delay-us = <200>;
 
-            regulator-boot-off;
+            regulator-boot-on;
         };
 
         runcam_vdd: regulator_runcam_vdd {
