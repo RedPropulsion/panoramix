@@ -18,12 +18,12 @@
 
 #include <cfb_font_templeos.h>
 #include <mavwrap.h>
-#include "file_logger.h"
+#include <gnss_u_blox_m10.h>
+#include <file_logger.h>
+#include <display.h>
+#include <menu.h>
 
-// #include <zephyr/drivers/display.h>
-#include "gnss_u_blox_m10.h"
-#include "display.h"
-#include "menu.h"
+
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
