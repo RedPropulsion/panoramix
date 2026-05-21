@@ -230,7 +230,7 @@ static void menu_handle_event(enum encoder_event evt)
         struct menu_item *item = &state.current->items[state.selected];
         LOG_DBG("Menu: PRESS_ROTATE_CW on '%s' (draw=%d sub=%d)",
                 item->label, item->draw_fn != NULL, item->submenu != NULL);
-                play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL);
+        play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL);
         if (item->draw_fn) {
             state.active_draw_fn = item->draw_fn;
             state.active_title = item->label;
@@ -249,7 +249,7 @@ static void menu_handle_event(enum encoder_event evt)
     }
     case ENCODER_PRESS_ROTATE_CCW:
         LOG_DBG("Menu: PRESS_ROTATE_CCW (active_draw=%d parent=%d)",
-                state.active_draw_fn != NULL, state.current->parent != NULL);
+        state.active_draw_fn != NULL, state.current->parent != NULL);
         if (state.active_draw_fn) {
             state.active_draw_fn = NULL;
             state.active_title = NULL;
@@ -259,6 +259,7 @@ static void menu_handle_event(enum encoder_event evt)
             state.current = state.current->parent;
             state.selected = 0;
             state.scroll_offset = 0;
+            clear_display();
             LOG_DBG("Menu: exited to parent menu");
         } else {
             LOG_DBG("Menu: PRESS_ROTATE_CCW ignored (no parent, no active_draw)");
@@ -279,7 +280,7 @@ void menu_thread(void *p1, void *p2, void *p3)
 while (1) {
         // LOG_DBG("Waiting for menu events");
         k_poll(events, 2, K_FOREVER);
-        LOG_DBG("Updating Menu");
+        // LOG_DBG("Updating Menu");
 
         bool user_input = false;
         bool data_changed = false;
