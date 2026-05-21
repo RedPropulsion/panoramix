@@ -5,22 +5,76 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/fs/fs.h>
+#include <zephyr/storage/disk_access.h>
+#include <zephyr/drivers/led_strip.h>
 #include <zephyr/logging/log_ctrl.h>
-#include <zephyr/drivers/display.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/display/cfb.h>
-#include "sound.h"
-#include "udp_client.h"
+#include <zephyr/drivers/i2c.h>
+
+
+#include <cfb_font_templeos.h>
+#include <mavwrap.h>
+#include "file_logger.h"
+
+// #include <zephyr/drivers/display.h>
 #include "gnss_u_blox_m10.h"
 #include "display.h"
 #include "menu.h"
-#include <cfb_font_templeos.h>
-#include <zephyr/drivers/i2c.h>
-#include "file_logger.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
+
+
+
+/* ------------------------------------------------------------------ *
+ * MavWrap
+ * ------------------------------------------------------------------ */
+#define RX_QUEUE_SIZE 16
+
+static const struct device *mavlink_lora =
+    DEVICE_DT_GET(DT_NODELABEL(mavlink_lora));
+ 
+static const struct device *mavlink_udp =
+    DEVICE_DT_GET(DT_NODELABEL(mavlink_netif));
+// K_MSGQ_DEFINE(rx_queue, sizeof(mavlink_message_t), RX_QUEUE_SIZE,
+//               sizeof(void *));
+
+
+static void lora_rx_callback(const struct device *dev,
+                              const mavlink_message_t *msg, void *user_data) {
+  LOG_INF("Received Packet!");
+  // int ret = k_msgq_put(&rx_queue, msg, K_NO_WAIT);
+  // if (ret < 0) {
+  //   LOG_ERR("Queue overflow, clearing...");
+  //   k_msgq_purge(&rx_queue);
+  //   k_msgq_put(&rx_queue, msg, K_NO_WAIT);
+  // }
+
+  int from_lora = dev == mavlink_lora;
+
+  LOG_INF("%s: Got msgid: %d", from_lora ? "LORA" : "UDP", msg->msgid);
+
+  struct mavwrap_stats stats;
+  int ret = mavwrap_get_stats(dev, &stats);
+  if (ret < 0) {
+    LOG_ERR("\tCouldn't get %s stats: %s", from_lora ? "LORA" : "UDP",
+            strerror(-ret));
+  } else {
+    if (from_lora) {
+      LOG_INF("\tRSSI: %d\tSNR: %d", stats.rx_rssi, stats.rx_snr);
+      // lora_set_state_led(stats.rx_snr);
+    }
+    if (stats.tx_errors) {
+      LOG_WRN("\ttx errors: %d", stats.tx_errors);
+    }
+  }
+  menu_update_lora_stats(stats.rx_packets, stats.tx_packets,stats.rx_rssi, stats.rx_snr );
+
+  mavwrap_send_message(from_lora ? mavlink_udp : mavlink_udp, msg);
+}
 
 /* ------------------------------------------------------------------ *
  * File logger
@@ -48,9 +102,9 @@ static void init_storage(void)
 /* ------------------------------------------------------------------ *
  * LoRa
  * ------------------------------------------------------------------ */
-#define LORA_NODE DT_NODELABEL(lora_sx1261)
-static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
-static struct lora_modem_config lora_tx_config;
+// #define LORA_NODE DT_NODELABEL(lora_sx1261)
+// static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
+// static struct lora_modem_config lora_tx_config;
 
 /* ------------------------------------------------------------------ *
  * Neopixel
@@ -76,30 +130,30 @@ static const struct gpio_dt_spec user_btn =
     GPIO_DT_SPEC_GET(DT_NODELABEL(user_button), gpios);
 
 static struct gpio_callback btn_cb_data;
-static struct k_work button_work;
-static uint8_t demo = 0;
+// static struct k_work button_work;
+// static uint8_t demo = 0;
 
-void sound_finished_cb(void) {
-    LOG_INF("Sound playback finished");
-}
+// void sound_finished_cb(void) {
+//     LOG_INF("Sound playback finished");
+// }
 
-static void button_work_handler(struct k_work *work)
-{
-    ARG_UNUSED(work);
-    LOG_INF("Button work: toggling sound demo");
-    switch (demo++ % 4) {
-    case 0: play_sound(success_sound, success_sound_len, sound_finished_cb); break;
-    case 1: play_sound(alert_sound, alert_sound_len, sound_finished_cb); break;
-    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, sound_finished_cb); break;
-    case 3: play_sound(error_sound, error_sound_len, sound_finished_cb); break;
-    }
-}
+// static void button_work_handler(struct k_work *work)
+// {
+//     ARG_UNUSED(work);
+//     LOG_INF("Button work: toggling sound demo");
+//     switch (demo++ % 4) {
+//     case 0: play_sound(success_sound, success_sound_len, sound_finished_cb); break;
+//     case 1: play_sound(alert_sound, alert_sound_len, sound_finished_cb); break;
+//     case 2: play_sound(acknowledge_sound, acknowledge_sound_len, sound_finished_cb); break;
+//     case 3: play_sound(error_sound, error_sound_len, sound_finished_cb); break;
+//     }
+// }
 
-void button_handler(const struct device *dev, struct gpio_callback *cb,
-                    uint32_t pins)
-{
-    k_work_submit(&button_work);
-}
+// void button_handler(const struct device *dev, struct gpio_callback *cb,
+//                     uint32_t pins)
+// {
+//     k_work_submit(&button_work);
+// }
 
 /* ------------------------------------------------------------------ *
  * LED blink timers
@@ -147,6 +201,9 @@ int main(void)
      LOG_INF("Starting main()");
     int ret;
 
+    mavwrap_start(mavlink_lora, lora_rx_callback, NULL);
+    mavwrap_start(mavlink_udp, lora_rx_callback, NULL);
+    // udp_client_init();
     
     
 
@@ -205,34 +262,30 @@ int main(void)
     file_logger_close(&log_file);
     file_logger_remove("/SD:/packets.log");
     file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
+    display_update_row(1, "Storage Ok");
     #endif
+    
+    // /* Initialize LoRa device */
+    // if (!device_is_ready(lora_dev)) {
+    //     LOG_ERR("LoRa device not ready");
+    // } else {
+    //     lora_tx_config.frequency = 868000000;
+    //     lora_tx_config.bandwidth = BW_125_KHZ;
+    //     lora_tx_config.datarate = SF_7;
+    //     lora_tx_config.coding_rate = CR_4_5;
+    //     lora_tx_config.preamble_len = 12;
+    //     lora_tx_config.tx_power = 4;
+    //     lora_tx_config.tx = true;
+    //     lora_tx_config.iq_inverted = false;
+    //     lora_tx_config.public_network = false;
 
-    /* Initialize LoRa device */
-    if (!device_is_ready(lora_dev)) {
-        LOG_ERR("LoRa device not ready");
-    } else {
-        lora_tx_config.frequency = 868000000;
-        lora_tx_config.bandwidth = BW_250_KHZ;
-        lora_tx_config.datarate = SF_8;
-        lora_tx_config.coding_rate = CR_4_5;
-        lora_tx_config.preamble_len = 12;
-        lora_tx_config.tx_power = 14;
-        lora_tx_config.tx = true;
-        lora_tx_config.iq_inverted = false;
-        lora_tx_config.public_network = false;
-
-        ret = lora_config(lora_dev, &lora_tx_config);
-        if (ret < 0) {
-            LOG_ERR("LoRa config failed: %d", ret);
-        } else {
-            LOG_INF("LoRa initialized: 868 MHz, SF8, 14 dBm");
-        }
-    }    
-    char buf[255] = {0};
-    int16_t RSSI;
-    int8_t SNR;
-
-    display_update_row(1,"LoRa ok");
+    //     ret = lora_config(lora_dev, &lora_tx_config);
+    //     if (ret < 0) {
+    //         LOG_ERR("LoRa config failed: %d", ret);
+    //     } else {
+    //         LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+    //     }
+    // }
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
@@ -248,9 +301,8 @@ int main(void)
         LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
-    k_work_init(&button_work, button_work_handler);
-    LOG_INF("Buzzer pointer %p", (void *)&buzzer);
-    sound_init(&buzzer);
+    // k_work_init(&button_work, button_work_handler);
+    // sound_init(&buzzer);
 
     
     /* LEDs */
@@ -276,13 +328,13 @@ int main(void)
 
     ret = gpio_pin_interrupt_configure_dt(&user_btn, GPIO_INT_EDGE_FALLING);
 
-    gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
-    ret = gpio_add_callback(user_btn.port, &btn_cb_data);
+    // gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
+    // ret = gpio_add_callback(user_btn.port, &btn_cb_data);
 
-    display_update_row(3, "Buttons OK");
+    // display_update_row(3, "Buttons OK");
 
     display_update_row(4, "UDP init");
-    udp_client_init();
+    // udp_client_init();
     display_update_row(5, "UDP Ok");
 
 
@@ -297,34 +349,36 @@ int main(void)
 
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
-    uint8_t tx_buf[] = "Hello from Obelics!";
+    // uint8_t tx_buf[] = "Hello from Obelics!";
     
 
-    LOG_INF("Starting main loop...");
     // display_string("Main loop");
-    display_update_row(5, "Init complete");
+    display_update_row(7, "Init complete");
     k_sleep(K_MSEC(1000));
 
-    display_clear_text();
+    // display_clear_text();
 
-    menu_init();
+    LOG_INF("Menu: init ");
+    menu_init(mavlink_lora, mavlink_udp, &buzzer);
 
+    LOG_INF("Menu: Starting");
     menu_start();
 
-    int lora_counter = 0;
-    int row=0;
+    LOG_INF("Starting main loop...");
+    // int lora_counter = 0;
+    // int row=0;
     while (1) {
 
         // display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
-        if (device_is_ready(lora_dev)) {
-            int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
-            if (err == 0) {
-                LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
-            } else {
-                LOG_ERR("LoRa TX failed: %d", err);
-            }
-        }
+        // if (device_is_ready(lora_dev)) {
+        //     int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
+        //     if (err == 0) {
+        //         LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
+        //     } else {
+        //         LOG_ERR("LoRa TX failed: %d", err);
+        //     }
+        // }
 
         memset(pixels, 0, sizeof(pixels));
         if (toggle) {
@@ -341,21 +395,21 @@ int main(void)
 
         
 
-        int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
-        if (err == -EAGAIN) {
-            LOG_DBG("No LoRa RX data yet");
-            // display_update_row(7, "No LoRa RX data");
-        } else if (err < 0) {
-          menu_update_lora_stats(lora_counter, err, 0, 0);
-            LOG_ERR("LoRa RX failed: %d", err);
-            // display_update_row(7, "LoRa RX failed: %d", err);
-        } else {
-          menu_update_lora_stats(lora_counter, err, (int16_t)RSSI, (int8_t)SNR);
-            LOG_INF("LoRa RX: %d bytes: %s", err, buf);
-            LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
-            // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
-        }
-        row = (row + 1) % 8; // cycle through display rows for updates
+        // int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
+        // if (err == -EAGAIN) {
+        //     LOG_DBG("No LoRa RX data yet");
+        //     // display_update_row(7, "No LoRa RX data");
+        // } else if (err < 0) {
+        //   menu_update_lora_stats(lora_counter, err, 0, 0);
+        //     LOG_ERR("LoRa RX failed: %d", err);
+        //     // display_update_row(7, "LoRa RX failed: %d", err);
+        // } else {
+        //   menu_update_lora_stats(lora_counter, err, (int16_t)RSSI, (int8_t)SNR);
+        //     LOG_INF("LoRa RX: %d bytes: %s", err, buf);
+        //     LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
+        //     // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
+        // }
+        // row = (row + 1) % 8; // cycle through display rows for updates
 
 
         // LOG_DBG("GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
@@ -382,7 +436,7 @@ int main(void)
         } else {
             // display_update_row(0, "GPS: No fix");
         }
-        // k_sleep(K_SECONDS(1));
+        k_sleep(K_SECONDS(1));
     }
     return 0;
 }

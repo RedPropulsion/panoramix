@@ -78,27 +78,27 @@ void play_sound(const Note *notes, size_t count, sound_done_cb done_cb) {
   k_work_reschedule(&note_work, K_NO_WAIT);
 }
 
-const Note success_sound[] = {
+const Note SOUND_SUCCESS[] = {
     {NOTE_G5, SOUND_EIGHTH},
     {NOTE_REST, SOUND_EIGHTH},
     {NOTE_A5, SOUND_QUARTER},
 };
-const size_t success_sound_len = ARRAY_SIZE(success_sound);
+const size_t SOUND_SUCCESS_LEN = ARRAY_SIZE(SOUND_SUCCESS);
 
-const Note alert_sound[] = {
+const Note SOUND_ALERT[] = {
     {NOTE_E5, 60},   {NOTE_REST, 60}, {NOTE_E5, 60},
     {NOTE_REST, 60}, {NOTE_E5, 60},   {NOTE_REST, 60},
 };
-const size_t alert_sound_len = ARRAY_SIZE(alert_sound);
+const size_t SOUND_ALERT_LEN = ARRAY_SIZE(SOUND_ALERT);
 
-const Note acknowledge_sound[] = {
+const Note SOUND_ACKNOWLEDGE[] = {
     {NOTE_A5, SOUND_QUARTER},
 };
-const size_t acknowledge_sound_len = ARRAY_SIZE(acknowledge_sound);
+const size_t SOUND_ACKNOWLEDGE_LEN = ARRAY_SIZE(SOUND_ACKNOWLEDGE);
 
-const Note error_sound[] = {
+const Note SOUND_ERROR[] = {
     {NOTE_E4, SOUND_HALF},
     {NOTE_REST, SOUND_EIGHTH},
     {NOTE_D4, SOUND_HALF},
 };
-const size_t error_sound_len = ARRAY_SIZE(error_sound);
+const size_t SOUND_ERROR_LEN = ARRAY_SIZE(SOUND_ERROR);
