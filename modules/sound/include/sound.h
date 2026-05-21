@@ -22,16 +22,16 @@ void play_sound(const Note *notes, size_t count, sound_done_cb done_cb);
 
 void stop_sound(void);
 
-extern const Note success_sound[];
-extern const size_t success_sound_len;
+extern const Note SOUND_SUCCESS[];
+extern const size_t SOUND_SUCCESS_LEN;
 
-extern const Note alert_sound[];
-extern const size_t alert_sound_len;
+extern const Note SOUND_ALERT[];
+extern const size_t SOUND_ALERT_LEN;
 
-extern const Note acknowledge_sound[];
-extern const size_t acknowledge_sound_len;
+extern const Note SOUND_ACKNOWLEDGE[];
+extern const size_t SOUND_ACKNOWLEDGE_LEN;
 
-extern const Note error_sound[];
-extern const size_t error_sound_len;
+extern const Note SOUND_ERROR[];
+extern const size_t SOUND_ERROR_LEN;
 
 #endif /* SOUND_H */
