@@ -59,11 +59,13 @@
         transport = <&lora_sx1261>;
         lora-interface;
 
+                lora-interface;
+
         lora-frequency = <868000000>;
-        lora-bandwidth = <125>;
-        lora-spreading-factor = <7>;
+        lora-bandwidth = <250>;
+        lora-spreading-factor = <8>;
         lora-coding-rate = <5>;
-        lora-tx-power = <14>;
+        lora-tx-power = <22>;
         lora-preamble-length = <12>;
     };
 

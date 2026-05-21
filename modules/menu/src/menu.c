@@ -442,10 +442,14 @@ static void cmd_set_manual_mode(void)
     LOG_INF("MAVLink: Setting Manual Mode");
     mavlink_message_t msg;
 
-    mavlink_msg_command_long_pack(1, 69, &msg, 1,1, MAV_CMD_DO_SET_MODE , MAV_MODE_MANUAL_DISARMED, 0, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+
+    //TODO: using mode 14 for right now, set to MAV_MODE_MANUAL_DISARMED later, (64)
+    mavlink_msg_command_long_pack(1, 69, &msg, 1,1, MAV_CMD_DO_SET_MODE , 12, 0, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
     
     mavwrap_send_message(__mav_devices.mav_lora, &msg);
 }
+
+
 
 static void cmd_do_wiggle_servo(void)
 {
@@ -454,7 +458,33 @@ static void cmd_do_wiggle_servo(void)
     mavlink_message_t msg;
     mavlink_msg_command_long_pack(1, 69, &msg, 1,1, MAV_CMD_DO_SET_SERVO , 0 , 30, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
     
-    mavwrap_send_message(__mav_devices.mav_lora, &msg);
+    // mavwrap_send_message(__mav_devices.mav_lora, &msg);
+}
+
+static void cmd_do_set_recovery_servo_reset(void)
+{
+    LOG_INF("MAVLink: Resetting Servo");
+
+    mavlink_message_t msg1;
+    mavlink_msg_command_long_pack(1, 69, &msg1, 1,1, MAV_CMD_DO_SET_SERVO , 0 , 30 , 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+    mavlink_message_t msg2;
+    mavlink_msg_command_long_pack(1, 69, &msg2, 1,1, MAV_CMD_DO_SET_SERVO , 1 , 30 , 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+    
+    mavwrap_send_message(__mav_devices.mav_lora, &msg1);
+    mavwrap_send_message(__mav_devices.mav_lora, &msg2);
+}
+
+static void cmd_do_set_recovery_servo(void)
+{
+    LOG_INF("MAVLink: Rotating Servo");
+
+    mavlink_message_t msg1;
+    mavlink_message_t msg2;
+    mavlink_msg_command_long_pack(1, 69, &msg1, 1,1, MAV_CMD_DO_SET_SERVO , 0 , 210, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+    mavlink_msg_command_long_pack(1, 69, &msg2, 1,1, MAV_CMD_DO_SET_SERVO , 0 , 210, 0, 0.0f ,0.0f, 0.0f, 0.0f, 0.0f  );
+    
+    mavwrap_send_message(__mav_devices.mav_lora, &msg1);
+    mavwrap_send_message(__mav_devices.mav_lora, &msg2);
 }
 
 static void cmd_reboot(void)
@@ -466,6 +496,8 @@ static struct menu_item commands_items[] = {
     {"Arm/Disarm", NULL, cmd_arm_disarm, NULL, true},
     {"Set Manual Mode", NULL, cmd_set_manual_mode, NULL, false},
     {"Wiggle Servo", NULL, cmd_do_wiggle_servo, NULL, true},
+    {"Test Recovery Servos", NULL, cmd_do_set_recovery_servo, NULL, true},
+    {"Reset Recovery Servos", NULL, cmd_do_set_recovery_servo_reset, NULL, true},
     {"CAGA", NULL, cmd_reboot, NULL, true},
 };
 
