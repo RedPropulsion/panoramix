@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <zephyr/drivers/pwm.h>
 
 #define MENU_VISIBLE_ROWS 7
 #define MENU_CURSOR_ROW 3
@@ -74,7 +75,7 @@ struct menu_display_data {
 extern struct menu_display_data menu_data;
 extern struct k_sem menu_data_sem;
 
-int menu_init(const struct device *mav_lora,const struct device *mav_udp);
+int menu_init(const struct device *mav_lora,const struct device *mav_udp, const struct pwm_dt_spec *buzzer);
 
 void menu_start(void);
 

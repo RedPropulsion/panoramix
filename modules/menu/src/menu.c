@@ -4,7 +4,7 @@
 #include <mavlink_types.h>
 #include <stdint.h>
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(menu, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -15,10 +15,9 @@ LOG_MODULE_REGISTER(menu, LOG_LEVEL_DBG);
 #include <stdlib.h>
 
 #include <mavwrap.h>
-
-#include "menu.h"
 #include <encoder_input.h>
-
+#include <menu.h>
+#include <sound.h>
 
 #define MIN_REDRAW_MS CONFIG_LIB_MENU_MIN_REDRAW_MS
 
@@ -27,6 +26,7 @@ K_SEM_DEFINE(menu_data_sem, 0, 1);
 struct cmd_devices {
     struct device *mav_lora;
     struct device *mav_udp;
+    struct pwm_dt_spec *buzzer;
 }__mav_devices;
 
 struct menu_display_data menu_data = {0};
@@ -150,14 +150,15 @@ static void menu_handle_event(enum encoder_event evt)
         [ENCODER_PRESS_ROTATE_CW] = "PRESS_ROTATE_CW",
         [ENCODER_PRESS_ROTATE_CCW] = "PRESS_ROTATE_CCW",
     };
-    LOG_INF("Menu EVT: %s (sel=%d confirm=%d active_draw=%d)",
-            evt_names[evt], state.selected, state.showing_confirmation, state.active_draw_fn != NULL);
+    // LOG_DBG("Menu EVT: %s (sel=%d confirm=%d active_draw=%d)",
+    //         evt_names[evt], state.selected, state.showing_confirmation, state.active_draw_fn != NULL);
 
     if (state.showing_confirmation) {
         switch (evt) {
         case ENCODER_DOUBLE_PRESS:
             if (state.confirming_item && state.confirming_item->action_fn) {
                 state.confirming_item->action_fn();
+                play_sound(SOUND_SUCCESS, SOUND_SUCCESS_LEN, NULL);
             }
             state.showing_confirmation = false;
             state.confirming_item = NULL;
@@ -177,35 +178,39 @@ static void menu_handle_event(enum encoder_event evt)
         if (state.selected < state.current->item_count - 1) {
             state.selected++;
             update_scroll();
-            LOG_INF("Menu: sel++ -> %d", state.selected);
+            LOG_DBG("Menu: sel++ -> %d", state.selected);
         } else {
-            LOG_INF("Menu: sel at bottom, ignored");
+            LOG_DBG("Menu: sel at bottom, ignored");
+            play_sound(SOUND_ALERT, SOUND_ALERT_LEN, NULL);
         }
         break;
     case ENCODER_ROTATE_CCW:
         if (state.selected > 0) {
             state.selected--;
             update_scroll();
-            LOG_INF("Menu: sel-- -> %d", state.selected);
+            LOG_DBG("Menu: sel-- -> %d", state.selected);
         } else {
-            LOG_INF("Menu: sel at top, ignored");
+            LOG_DBG("Menu: sel at top, ignored");
+            play_sound(SOUND_ALERT, SOUND_ALERT_LEN, NULL);
         }
         break;
     case ENCODER_DOUBLE_PRESS: {
         struct menu_item *item = &state.current->items[state.selected];
-        LOG_INF("Menu: DOUBLE_PRESS on '%s' (draw=%d sub=%d act=%d conf=%d)",
+        LOG_DBG("Menu: DOUBLE_PRESS on '%s' (draw=%d sub=%d act=%d conf=%d)",
                 item->label, item->draw_fn != NULL, item->submenu != NULL,
                 item->action_fn != NULL, item->needs_confirmation);
         if (item->draw_fn) {
             state.active_draw_fn = item->draw_fn;
             state.active_title = item->label;
             clear_display();
-            LOG_INF("Menu: entered draw_fn '%s'", item->label);
+            LOG_DBG("Menu: entered '%s'", item->label);
+            play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL);
         } else if (item->submenu) {
             state.current = item->submenu;
             state.selected = 0;
             state.scroll_offset = 0;
-            LOG_INF("Menu: entered submenu '%s'", item->label);
+            LOG_DBG("Menu: entered submenu '%s'", item->label);
+            play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL);
         } else if (item->action_fn) {
             if (item->needs_confirmation) {
                 state.showing_confirmation = true;
@@ -223,37 +228,41 @@ static void menu_handle_event(enum encoder_event evt)
             break;
         }
         struct menu_item *item = &state.current->items[state.selected];
-        LOG_INF("Menu: PRESS_ROTATE_CW on '%s' (draw=%d sub=%d)",
+        LOG_DBG("Menu: PRESS_ROTATE_CW on '%s' (draw=%d sub=%d)",
                 item->label, item->draw_fn != NULL, item->submenu != NULL);
+                play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL);
         if (item->draw_fn) {
             state.active_draw_fn = item->draw_fn;
             state.active_title = item->label;
             clear_display();
-            LOG_INF("Menu: entered draw_fn '%s'", item->label);
+            LOG_DBG("Menu: entered draw_fn '%s'", item->label);
+            play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL);
         } else if (item->submenu) {
             state.current = item->submenu;
             state.selected = 0;
             state.scroll_offset = 0;
             clear_display();
-            LOG_INF("Menu: entered submenu '%s'", item->label);
+            LOG_DBG("Menu: entered submenu '%s'", item->label);
+            play_sound(SOUND_ACKNOWLEDGE, SOUND_ACKNOWLEDGE_LEN, NULL); 
         }
         break;
     }
     case ENCODER_PRESS_ROTATE_CCW:
-        LOG_INF("Menu: PRESS_ROTATE_CCW (active_draw=%d parent=%d)",
+        LOG_DBG("Menu: PRESS_ROTATE_CCW (active_draw=%d parent=%d)",
                 state.active_draw_fn != NULL, state.current->parent != NULL);
         if (state.active_draw_fn) {
             state.active_draw_fn = NULL;
             state.active_title = NULL;
             clear_display();
-            LOG_INF("Menu: exited draw_fn, back to menu");
+            LOG_DBG("Menu: exited back to menu");
         } else if (state.current->parent) {
             state.current = state.current->parent;
             state.selected = 0;
             state.scroll_offset = 0;
-            LOG_INF("Menu: exited to parent menu");
+            LOG_DBG("Menu: exited to parent menu");
         } else {
-            LOG_INF("Menu: PRESS_ROTATE_CCW ignored (no parent, no active_draw)");
+            LOG_DBG("Menu: PRESS_ROTATE_CCW ignored (no parent, no active_draw)");
+            play_sound(SOUND_ALERT, SOUND_ALERT_LEN, NULL);
         }
         break;
     }
@@ -268,7 +277,7 @@ void menu_thread(void *p1, void *p2, void *p3)
                       K_POLL_MODE_NOTIFY_ONLY, &menu_data_sem);
 
 while (1) {
-        LOG_DBG("Waiting for menu events");
+        // LOG_DBG("Waiting for menu events");
         k_poll(events, 2, K_FOREVER);
         LOG_DBG("Updating Menu");
 
@@ -503,15 +512,18 @@ static void display_init(void)
     LOG_INF("Display initialized for menu");
 }
 
-int menu_init(const struct device *mav_lora,const  struct device *mav_udp)
+int menu_init(const struct device *mav_lora,const struct device *mav_udp, const struct pwm_dt_spec *buzzer)
 {
     __mav_devices.mav_lora = mav_lora;
     __mav_devices.mav_udp = mav_udp;
+    __mav_devices.buzzer = buzzer;
 
 
     encoder_input_init();
 
     display_init();
+
+    sound_init(buzzer);
 
     state.current = &main_menu;
     state.selected = 0;

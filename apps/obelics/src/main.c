@@ -18,11 +18,9 @@
 
 #include <cfb_font_templeos.h>
 #include <mavwrap.h>
-#include "sound.h"
 #include "file_logger.h"
 
 // #include <zephyr/drivers/display.h>
-#include "sound.h"
 #include "gnss_u_blox_m10.h"
 #include "display.h"
 #include "menu.h"
@@ -132,30 +130,30 @@ static const struct gpio_dt_spec user_btn =
     GPIO_DT_SPEC_GET(DT_NODELABEL(user_button), gpios);
 
 static struct gpio_callback btn_cb_data;
-static struct k_work button_work;
-static uint8_t demo = 0;
+// static struct k_work button_work;
+// static uint8_t demo = 0;
 
-void sound_finished_cb(void) {
-    LOG_INF("Sound playback finished");
-}
+// void sound_finished_cb(void) {
+//     LOG_INF("Sound playback finished");
+// }
 
-static void button_work_handler(struct k_work *work)
-{
-    ARG_UNUSED(work);
-    LOG_INF("Button work: toggling sound demo");
-    switch (demo++ % 4) {
-    case 0: play_sound(success_sound, success_sound_len, sound_finished_cb); break;
-    case 1: play_sound(alert_sound, alert_sound_len, sound_finished_cb); break;
-    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, sound_finished_cb); break;
-    case 3: play_sound(error_sound, error_sound_len, sound_finished_cb); break;
-    }
-}
+// static void button_work_handler(struct k_work *work)
+// {
+//     ARG_UNUSED(work);
+//     LOG_INF("Button work: toggling sound demo");
+//     switch (demo++ % 4) {
+//     case 0: play_sound(success_sound, success_sound_len, sound_finished_cb); break;
+//     case 1: play_sound(alert_sound, alert_sound_len, sound_finished_cb); break;
+//     case 2: play_sound(acknowledge_sound, acknowledge_sound_len, sound_finished_cb); break;
+//     case 3: play_sound(error_sound, error_sound_len, sound_finished_cb); break;
+//     }
+// }
 
-void button_handler(const struct device *dev, struct gpio_callback *cb,
-                    uint32_t pins)
-{
-    k_work_submit(&button_work);
-}
+// void button_handler(const struct device *dev, struct gpio_callback *cb,
+//                     uint32_t pins)
+// {
+//     k_work_submit(&button_work);
+// }
 
 /* ------------------------------------------------------------------ *
  * LED blink timers
@@ -303,8 +301,8 @@ int main(void)
         LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
-    k_work_init(&button_work, button_work_handler);
-    sound_init(&buzzer);
+    // k_work_init(&button_work, button_work_handler);
+    // sound_init(&buzzer);
 
     
     /* LEDs */
@@ -330,10 +328,10 @@ int main(void)
 
     ret = gpio_pin_interrupt_configure_dt(&user_btn, GPIO_INT_EDGE_FALLING);
 
-    gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
-    ret = gpio_add_callback(user_btn.port, &btn_cb_data);
+    // gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
+    // ret = gpio_add_callback(user_btn.port, &btn_cb_data);
 
-    display_update_row(3, "Buttons OK");
+    // display_update_row(3, "Buttons OK");
 
     display_update_row(4, "UDP init");
     // udp_client_init();
@@ -361,7 +359,7 @@ int main(void)
     // display_clear_text();
 
     LOG_INF("Menu: init ");
-    menu_init(mavlink_lora, mavlink_udp);
+    menu_init(mavlink_lora, mavlink_udp, &buzzer);
 
     LOG_INF("Menu: Starting");
     menu_start();
