@@ -1,5 +1,5 @@
 zephyr_library()
 zephyr_library_sources(
-    ms5611.c
-    ms5611_bus.c
+    ina219.c
+    ina219_bus.c
 )

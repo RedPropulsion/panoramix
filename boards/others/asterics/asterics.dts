@@ -63,58 +63,70 @@
         };
     };
 
-    /* led_strip_1: ws2812_1 {
-        compatible = "worldsemi,ws2812-gpio";
+    // led_strip_1: ws2812_1 {
+    //     compatible = "worldsemi,ws2812-gpio";
 
-        chain-length = <24>;
-        color-mapping = <LED_COLOR_ID_GREEN
-                        LED_COLOR_ID_RED
-                        LED_COLOR_ID_BLUE>;
-        gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
+    //     chain-length = <24>;
+    //     color-mapping = <LED_COLOR_ID_GREEN
+    //                     LED_COLOR_ID_RED
+    //                     LED_COLOR_ID_BLUE>;
+    //     gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
 
-    //parametri di default per WS2812. Se necessario, modificarli
-        delay-t1h = <700>;
-        delay-t1l = <600>;
-        delay-t0h = <350>;
-        delay-t0l = <800>;
-        reset-delay = <8000>;
+    // parametri di default per WS2812. Se necessario, modificarli
+    //     delay-t1h = <700>;
+    //     delay-t1l = <600>;
+    //     delay-t0h = <350>;
+    //     delay-t0l = <800>;
+    //     reset-delay = <8000>;
 
-        // sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
-    };
+    //      sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
+    // };
 
-    led_strip: ws2812_2 {
-        compatible = "worldsemi,ws2812-uart";
+    // led_strip: ws2812_2 {
+    //     compatible = "worldsemi,ws2812-uart";
 
-        chain-length = <12>;
-        color-mapping = <LED_COLOR_ID_GREEN
-                        LED_COLOR_ID_RED
-                        LED_COLOR_ID_BLUE>;
-        gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
+    //     chain-length = <12>;
+    //     color-mapping = <LED_COLOR_ID_GREEN
+    //                     LED_COLOR_ID_RED
+    //                     LED_COLOR_ID_BLUE>;
+    //     gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
 
-        delay-t1h = <700>;
-        delay-t1l = <600>;
-        delay-t0h = <350>;
-        delay-t0l = <800>;
-        reset-delay = <8000>;
+    //     delay-t1h = <700>;
+    //     delay-t1l = <600>;
+    //     delay-t0h = <350>;
+    //     delay-t0l = <800>;
+    //     reset-delay = <8000>;
 
-    }; */
+    // };
 
     pwm_devices {
         buzzer_pwm: buzzer_pwm {
             compatible = "pwm";
             pwms = <&pwm14 0 250000 PWM_POLARITY_NORMAL>;
         };
+    };
 
+    servos {
         servo_drogue_pwm: servo_drogue_pwm {
-            compatible = "pwm";
+            compatible = "generic,pwm-servo";
+
             // canale 1, 20ms period (50Hz)
-            pwms = <&pwm3 0 20000000 PWM_POLARITY_NORMAL>;
+            pwms = <&pwm3 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+
+            min-pulse = <PWM_USEC(500)>;
+            max-pulse = <PWM_USEC(2500)>;
+            max-angle = <270000>; // in mdeg
         };
 
         servo_main_pwm: servo_main_pwm {
-            compatible = "pwm";
+            compatible = "generic,pwm-servo";
+
             // canale 3, 20ms period (50Hz)
-            pwms = <&pwm3 2 20000000 PWM_POLARITY_NORMAL>;
+            pwms = <&pwm3 3 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+
+            min-pulse = <PWM_USEC(500)>;
+            max-pulse = <PWM_USEC(2500)>;
+            max-angle = <270000>; // in mdeg
         };
     };
 
@@ -191,6 +203,7 @@
     reg = <0x08000000 DT_SIZE_K(1024)>;
 };
 
+// External clock configuration
 &clk_hse {
     clock-frequency = <DT_FREQ_M(48)>;
     status = "okay";
@@ -201,13 +214,23 @@
     status = "okay";
 };
 
+/* PLL Math
+ * VCO_input must be between 1–16 MHz
+
+ * VCO_input  = PLL_source / div-m
+ * VCO_output = VCO_input  * mul-n   (+ fracn/8192 fractional part)
+ * PLLx_P     = VCO_output / div-p
+ * PLLx_Q     = VCO_output / div-q
+ * PLLx_R     = VCO_output / div-r
+ */
+
 &pll {
-    div-m = <3>;
-    mul-n = <34>;
-    div-p = <1>;
-    div-q = <10>;
-    div-r = <11>;
-    fracn = <3072>;
+    div-m = <24>;  // -> VCO_input = 48MHz / 24 = 2MHz
+    mul-n = <275>; // -> VCO_output = 2MHz * 275 = 550MHz
+    div-p = <1>;  // -> PLL1_P = 550MHz / 1 = 550MHz (SYSCLK)
+    div-q = <10>; // -> PLL1_Q = 550MHz / 10 = 55MHz
+    div-r = <11>; // -> PLL1_R = 550MHz / 11 = 50MHz
+    fracn = <0>;
     clocks = <&clk_hse>;
     status = "okay";
 };
@@ -237,16 +260,20 @@
 };
 
 &rcc {
-    clocks = <&pll>;
-    clock-frequency = <DT_FREQ_M(550)>; /* CPU Core Clock */
-    d1cpre = <1>;   // sets the CPU clock, same as systick
-    hpre = <2>;     // 275MHz to AXI, HCLK3, AHB1, AHB2, AHB4
-    d1ppre = <2>;   //137.5MHz to APB3 peripheral clocks
-    d2ppre1 = <2>;  //137.5MHz to APB1 peripheral clocks
-    d2ppre2 = <2>;  //137.5MHz to APB2 peripheral clocks
-    d3ppre = <2>;   //137.5MHz to APB4 peripheral clocks
-    //APB1 timer clocks = APB1 clock * 2 = 275MHz
-    //APB2 timer clocks = APB2 clock * 2 = 275MHz
+    clocks = <&pll>; // SYSCLOCK is PLLx_P
+
+    d1cpre = <1>;   // (SYSCLOCK / d1cpre) sets the CPU clock / SysTick
+    clock-frequency = <DT_FREQ_M(550)>; // CPU Core Clock
+
+    hpre = <2>;     // (CPU Clock / hpre) to HCLK (= AXI, HCLK3, AHB1, AHB2, AHB4)
+
+    d1ppre = <2>;   // (HCLK / d1ppre) to APB3 peripheral clocks
+    d2ppre1 = <2>;  // (HCLK / d2ppre1) to APB1 peripheral clocks
+    d2ppre2 = <2>;  // (HCLK / d2ppre2) to APB2 peripheral clocks
+    d3ppre = <2>;   // (HCLK / d3ppre) to APB4 peripheral clocks
+
+    // APB1 timer clocks are * 2 if the prescaler != 1.
+    // APB2 timer clocks are * 2 if the prescaler != 1.
 };
 
 &mco1 {
@@ -296,7 +323,9 @@
 
     //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
     ina219_mcu: ina219@41 {
-        compatible = "ti,ina219";
+        status = "okay";
+
+        compatible = "ti,ina219-rtio";
         reg = <0x41>;
 
         //required
@@ -312,7 +341,7 @@
     };
 
     ina219_rf: ina219@42 {
-        compatible = "ti,ina219";
+        compatible = "ti,ina219-rtio";
         reg = <0x42>;
 
         //required
@@ -446,14 +475,17 @@
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB1, 14)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+             <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
 
-    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
-                <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    ms5611_A: ms5611@0 {
+    dmas = <&dmamux1 3 40 STM32_DMA_PERIPH_TX>,
+           <&dmamux1 4 39 STM32_DMA_PERIPH_RX>;
+
+    ms5611_b: ms5611@0 {
         status = "okay";
 
         compatible = "ams,ms5611";
@@ -461,7 +493,7 @@
         spi-max-frequency = <1000000>;
     };
 
-    bmi088_gyro_A: bmi08x-gyro@1 {
+    bmi088_gyro_b: bmi08x-gyro@1 {
         status = "okay";
 
         compatible = "bosch,bmi08x-gyro";
@@ -474,7 +506,7 @@
         friendly-name="bmi088-gyro-A";
     };
 
-    bmi088_accel_A: bmi08x-accel@2 {
+    bmi088_accel_b: bmi08x-accel@2 {
         status = "okay";
         compatible = "bosch,bmi08x-accel";
         reg = <2>;
@@ -515,21 +547,21 @@
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB1, 15)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+             <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
 
-    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //acc
-                <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    ms5611_B: ms5611@0 {
+    ms5611_a: ms5611@0 {
         status = "okay";
         compatible = "ams,ms5611";
         reg = <0>;
         spi-max-frequency = <1000000>;
     };
 
-    bmi088_gyro_B: bmi08x-gyro@1 {
+    bmi088_gyro_a: bmi08x-gyro@1 {
         status = "okay";
 
         compatible = "bosch,bmi08x-gyro";
@@ -542,7 +574,7 @@
         friendly-name="bmi088-gyro-B";
     };
 
-    bmi088_accel_B: bmi08x-accel@2 {
+    bmi088_accel_a: bmi08x-accel@2 {
         status = "okay";
         compatible = "bosch,bmi08x-accel";
         reg = <2>;
@@ -555,7 +587,7 @@
         friendly-name="bmi088-accel-B";
     };
 
-    icm42688p_B: icm42688p@3 {
+    icm42688p_a: icm42688p@3 {
         status = "okay";
         compatible = "invensense,icm42688", "invensense,icm4268x";
         reg = <3>;
@@ -583,12 +615,12 @@
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB2, 13)>,
-            <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
+             <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
 
     cs-gpios = <&gpiog 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     // BMP585
-                <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //H3LIS331D
-                <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //LIS2MDL
-                <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //HSCDRRN001BDSA3
+               <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //H3LIS331D
+               <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //LIS2MDL
+               <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //HSCDRRN001BDSA3
 
     bmp585_sens: bmp585@0 {
         //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
@@ -755,6 +787,12 @@
 &timers3 {
     status = "okay";
 
+    // Period = (PSC + 1) × (ARR + 1) / Timer_Clock
+    //   - PSC = prescaler register value (divides the clock down to a slower tick)
+    //   - ARR = auto-reload register value (how many ticks before the timer resets)
+
+    st,prescaler = <99>;
+
     pwm3: pwm {
         status = "okay";
 
@@ -780,6 +818,8 @@
     pinctrl-0 = <&usart1_tx_pb14 &usart1_rx_pb15>;
     pinctrl-names = "default";
     current-speed = <115200>;
+    clocks = <&rcc STM32_CLOCK(APB2, 4)>,
+             <&rcc STM32_SRC_PLL2_Q USART16_SEL(1)>; 
 };
 
 &usart3 {
