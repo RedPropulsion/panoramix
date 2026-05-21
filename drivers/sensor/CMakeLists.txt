@@ -1,2 +1,3 @@
 add_subdirectory_ifdef(CONFIG_SENSOR_MS5611 ms5611)
+add_subdirectory_ifdef(CONFIG_GNSS_U_BLOX_M10 UBLOX_M10)
 add_subdirectory_ifdef(CONFIG_SENSOR_INA219_RTIO ina219-rtio)

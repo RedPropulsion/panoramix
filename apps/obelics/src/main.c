@@ -5,12 +5,19 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/drivers/lora.h>
 #include <zephyr/logging/log.h>
-
+#include <zephyr/logging/log_ctrl.h>
+#include <zephyr/drivers/display.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/drivers/led_strip.h>
+#include <zephyr/display/cfb.h>
 #include "sound.h"
 #include "udp_client.h"
+#include "gnss_u_blox_m10.h"
+#include "display.h"
+#include "menu.h"
+#include <cfb_font_templeos.h>
+#include <zephyr/drivers/i2c.h>
 #include "file_logger.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
@@ -55,6 +62,13 @@ static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
 
+
+/* ------------------------------------------------------------------ *
+ * Buzzer
+ * ------------------------------------------------------------------ */
+
+static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_NODELABEL(buzzer));
+
 /* ------------------------------------------------------------------ *
  * Button
  * ------------------------------------------------------------------ */
@@ -62,17 +76,29 @@ static const struct gpio_dt_spec user_btn =
     GPIO_DT_SPEC_GET(DT_NODELABEL(user_button), gpios);
 
 static struct gpio_callback btn_cb_data;
+static struct k_work button_work;
+static uint8_t demo = 0;
+
+void sound_finished_cb(void) {
+    LOG_INF("Sound playback finished");
+}
+
+static void button_work_handler(struct k_work *work)
+{
+    ARG_UNUSED(work);
+    LOG_INF("Button work: toggling sound demo");
+    switch (demo++ % 4) {
+    case 0: play_sound(success_sound, success_sound_len, sound_finished_cb); break;
+    case 1: play_sound(alert_sound, alert_sound_len, sound_finished_cb); break;
+    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, sound_finished_cb); break;
+    case 3: play_sound(error_sound, error_sound_len, sound_finished_cb); break;
+    }
+}
 
 void button_handler(const struct device *dev, struct gpio_callback *cb,
                     uint32_t pins)
 {
-    static uint8_t demo = 0;
-    switch (demo++ % 4) {
-    case 0: play_sound(success_sound, success_sound_len, NULL); break;
-    case 1: play_sound(alert_sound, alert_sound_len, NULL); break;
-    case 2: play_sound(acknowledge_sound, acknowledge_sound_len, NULL); break;
-    case 3: play_sound(error_sound, error_sound_len, NULL); break;
-    }
+    k_work_submit(&button_work);
 }
 
 /* ------------------------------------------------------------------ *
@@ -100,45 +126,18 @@ void led_timer_handler(struct k_timer *timer_id) {
 }
 
 /* ------------------------------------------------------------------ *
- * Encoder
+ * Oled Display
  * ------------------------------------------------------------------ */
-static const struct gpio_dt_spec enc_a  = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_a), gpios);
-static const struct gpio_dt_spec enc_b  = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_b), gpios);
-static const struct gpio_dt_spec enc_sw = GPIO_DT_SPEC_GET(DT_NODELABEL(encoder_s), gpios);
 
-static struct gpio_callback enc_a_cb_data;
-static struct gpio_callback enc_sw_cb_data;
+const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c2));
 
-void enc_sw_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    static uint32_t last_time = 0;
-    uint32_t now = k_uptime_get_32();
-    if (now - last_time < 50) return;
-    last_time = now;
-    selected_led = (selected_led + 1) % ARRAY_SIZE(leds);
-    LOG_DBG("Selected LED %d <---", selected_led);
-}
 
-void encoder_handler(const struct device *dev, struct gpio_callback *cb, uint32_t pins) {
-    int phase_sw = gpio_pin_get_dt(&enc_sw);
-    int step = 10;
-    if (!phase_sw) {
-        static uint32_t last_time = 0;
-        uint32_t now = k_uptime_get_32();
-        if (now - last_time < 5) return;
-        last_time = now;
-        int phase_b = gpio_pin_get_dt(&enc_b);
-        if (phase_b) {
-            intervals[selected_led] += step;
-        } else {
-            if (intervals[selected_led] > step)
-                intervals[selected_led] -= step;
-        }
-        LOG_DBG("LED sel=%d intervals: %d \t %d \t %d ms",
-               selected_led, intervals[0], intervals[1], intervals[2]);
-    } else {
-        enc_sw_handler(dev, cb, pins);
-    }
-}
+
+/* ------------------------------------------------------------------ *
+ * GPS
+ * ------------------------------------------------------------------ */
+
+ 
 
 /* ------------------------------------------------------------------ *
  * Main
@@ -149,7 +148,39 @@ int main(void)
     int ret;
 
     
-    udp_client_init();
+    
+
+    if (!device_is_ready(i2c_dev)) {
+        LOG_ERR("I2C device not ready");
+        return 0;
+    }
+    // i2c_scan_bus(i2c_dev);
+
+
+/* Oled Display */
+    ret = display_init();
+    if (ret < 0) {
+        LOG_ERR("Display init failed: %d", ret);
+    }
+    display_string("test");
+    display_update_row(0, "Starting");
+
+    // cfb_framebuffer_finalize(disp);
+
+
+    // uint8_t width, height;
+    // uint8_t num_fonts = cfb_get_numof_fonts(disp);
+
+    // // Loop through available fonts to get their dimensions
+    // for (uint8_t i = 0; i < num_fonts; i++) {
+    //     cfb_get_font_size(disp, i, &width, &height);
+    //     // printk("Font Index %d: %dx%d pixels\n", i, width, height);
+    //     cfb_framebuffer_set_font(disp, i);
+    //     display_string("Font %d: %dx%d", i, width, height);
+    //     k_sleep(K_SECONDS(2));
+    // }
+
+    // cfb_framebuffer_set_font(disp, 0);
 
     #ifdef CONFIG_FAT_FILESYSTEM_ELM
     /* Initialize file logger */
@@ -181,11 +212,11 @@ int main(void)
         LOG_ERR("LoRa device not ready");
     } else {
         lora_tx_config.frequency = 868000000;
-        lora_tx_config.bandwidth = BW_125_KHZ;
-        lora_tx_config.datarate = SF_7;
+        lora_tx_config.bandwidth = BW_250_KHZ;
+        lora_tx_config.datarate = SF_8;
         lora_tx_config.coding_rate = CR_4_5;
         lora_tx_config.preamble_len = 12;
-        lora_tx_config.tx_power = 4;
+        lora_tx_config.tx_power = 14;
         lora_tx_config.tx = true;
         lora_tx_config.iq_inverted = false;
         lora_tx_config.public_network = false;
@@ -194,9 +225,14 @@ int main(void)
         if (ret < 0) {
             LOG_ERR("LoRa config failed: %d", ret);
         } else {
-            LOG_INF("LoRa initialized: 868 MHz, SF7, 4 dBm");
+            LOG_INF("LoRa initialized: 868 MHz, SF8, 14 dBm");
         }
-    }
+    }    
+    char buf[255] = {0};
+    int16_t RSSI;
+    int8_t SNR;
+
+    display_update_row(1,"LoRa ok");
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
@@ -207,16 +243,15 @@ int main(void)
         return -ENODEV;
     }
 
-    static const struct pwm_dt_spec buzzer =
-        PWM_DT_SPEC_GET(DT_NODELABEL(buzzer));
+
     if (!device_is_ready(buzzer.dev)) {
         LOG_ERR("Buzzer PWM not ready");
         return -ENODEV;
     }
+    k_work_init(&button_work, button_work_handler);
+    LOG_INF("Buzzer pointer %p", (void *)&buzzer);
     sound_init(&buzzer);
 
-
-    
     
     /* LEDs */
     for (int i = 0; i < ARRAY_SIZE(leds); i++) {
@@ -229,23 +264,8 @@ int main(void)
         k_timer_start(&leds[i].timer, K_MSEC(intervals[i]), K_NO_WAIT);
     }
 
-    /* Encoder */
-    if (!gpio_is_ready_dt(&enc_a) || !gpio_is_ready_dt(&enc_b) ||
-        !gpio_is_ready_dt(&enc_sw)) {
-        LOG_ERR("Encoder GPIOs not ready");
-        return 0;
-    }
-    gpio_pin_configure_dt(&enc_a, GPIO_INPUT);
-    gpio_pin_configure_dt(&enc_b, GPIO_INPUT);
-    gpio_pin_configure_dt(&enc_sw, GPIO_INPUT);
+    display_update_row(2, "LED,Sound OK");
 
-    gpio_pin_interrupt_configure_dt(&enc_a, GPIO_INT_EDGE_RISING);
-    gpio_init_callback(&enc_a_cb_data, encoder_handler, BIT(enc_a.pin));
-    gpio_add_callback(enc_a.port, &enc_a_cb_data);
-
-    gpio_pin_interrupt_configure_dt(&enc_sw, GPIO_INT_EDGE_RISING);
-    gpio_init_callback(&enc_sw_cb_data, encoder_handler, BIT(enc_sw.pin));
-    gpio_add_callback(enc_sw.port, &enc_sw_cb_data);
 
     /* B1 User button */
     if (!gpio_is_ready_dt(&user_btn)) {
@@ -254,24 +274,48 @@ int main(void)
     }
     gpio_pin_configure_dt(&user_btn, GPIO_INPUT);
 
-    /* Verify you can actually read the pin */
-    // LOG_DBG("Button init done. Current pin state: %d\n", gpio_pin_get_dt(&user_btn));
-
     ret = gpio_pin_interrupt_configure_dt(&user_btn, GPIO_INT_EDGE_FALLING);
 
     gpio_init_callback(&btn_cb_data, button_handler, BIT(user_btn.pin));
     ret = gpio_add_callback(user_btn.port, &btn_cb_data);
 
+    display_update_row(3, "Buttons OK");
+
+    display_update_row(4, "UDP init");
+    udp_client_init();
+    display_update_row(5, "UDP Ok");
+
+
+    struct gps_position pos;
+    if (gps_get_latest(&pos) == 0) {
+        LOG_INF("GPS: %s data \n\t\t %d sats\n\t\t %d fix type  ",pos.valid ? "Valid" : "Invalid", pos.satellites, pos.fix_type);
+        display_update_row(6, "GPS: %d sats", pos.satellites);
+    } else {
+        display_update_row(6, "GPS: No fix");
+    }
 
 
     struct led_rgb pixels[NUM_LEDS] = {0};
     bool toggle = false;
-    uint8_t tx_buf[] = "Hello LoRa!";
+    uint8_t tx_buf[] = "Hello from Obelics!";
+    
+
+    LOG_INF("Starting main loop...");
+    // display_string("Main loop");
+    display_update_row(5, "Init complete");
+    k_sleep(K_MSEC(1000));
+
+    display_clear_text();
+
+    menu_init();
+
+    menu_start();
+
     int lora_counter = 0;
-
-
-    LOG_INF("Starting main loop...\n");
+    int row=0;
     while (1) {
+
+        // display_string("Running main loop...");
         /* LoRa TX every 5 seconds */
         if (device_is_ready(lora_dev)) {
             int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
@@ -285,13 +329,78 @@ int main(void)
         memset(pixels, 0, sizeof(pixels));
         if (toggle) {
             pixels[0].r = 128;
+            pixels[3].r = 128;
+            pixels[3].b = 128;
         } else {
             pixels[1].b = 128;
+            pixels[2].g = 128;
         }
         toggle = !toggle;
 
         led_strip_update_rgb(strip, pixels, NUM_LEDS);
-        k_sleep(K_SECONDS(5));
+
+        
+
+        int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
+        if (err == -EAGAIN) {
+            LOG_DBG("No LoRa RX data yet");
+            // display_update_row(7, "No LoRa RX data");
+        } else if (err < 0) {
+          menu_update_lora_stats(lora_counter, err, 0, 0);
+            LOG_ERR("LoRa RX failed: %d", err);
+            // display_update_row(7, "LoRa RX failed: %d", err);
+        } else {
+          menu_update_lora_stats(lora_counter, err, (int16_t)RSSI, (int8_t)SNR);
+            LOG_INF("LoRa RX: %d bytes: %s", err, buf);
+            LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
+            // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
+        }
+        row = (row + 1) % 8; // cycle through display rows for updates
+
+
+        // LOG_DBG("GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
+        //                             "lat=%d, lon=%d, alt=%dmm | "
+        //                             "sats=%d, fix=%d, hdop=%d | "
+        //                             "speed=%dmm/s, heading=%d.%05d | "
+        //                             "acc: horiz=%umm, vert=%umm",
+        //                             pos.day, pos.month, pos.year,
+        //                             pos.hour, pos.minute, pos.second, pos.nanosecond / 1000000,
+        //                             pos.latitude, pos.longitude, pos.altitude_mm,
+        //                             pos.satellites, pos.fix_type, pos.hdop,
+        //                             pos.speed_mm_s, pos.heading_1e5 / 100000, pos.heading_1e5 % 100000,
+        //                             pos.horiz_acc_mm, pos.vert_acc_mm);
+
+        ret = gps_get_latest(&pos);
+        if (ret == 0 && pos.valid) {
+          menu_update_gps(true, pos.satellites, pos.fix_type, pos.latitude, pos.longitude, pos.altitude_mm);
+            // display_update_row(0, "%d sats fix=%d", pos.satellites, pos.fix_type);
+            // display_update_row(1, "lat%d", pos.latitude);
+            // display_update_row(2,"lon%d", pos.longitude);
+            // display_update_row(3,"alt%d", (int)(pos.altitude_mm/1000));
+            // display_update_row(4,"h:%d v:%d", (int)(pos.horiz_acc_mm), (int)(pos.vert_acc_mm));   
+            // display_update_row(5, "%02d:%02d:%02d", pos.hour, pos.minute, pos.second);
+        } else {
+            // display_update_row(0, "GPS: No fix");
+        }
+        // k_sleep(K_SECONDS(1));
     }
     return 0;
+}
+
+
+void k_sys_fatal_error_handler(unsigned int reason,
+                               const struct arch_esf *esf) {
+  const struct gpio_dt_spec error_led =
+      GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+
+  LOG_PANIC();
+
+  while (1) {
+    display_string("FATAL ERROR");
+    LOG_ERR("I'M PANICKING");
+    gpio_pin_toggle_dt(&error_led);
+    k_busy_wait(500 * 1000);
+  }
+
+  k_fatal_halt(reason);
 }
