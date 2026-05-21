@@ -329,7 +329,9 @@
 
     //https://docs.zephyrproject.org/latest/build/dts/api/bindings/sensor/ti,ina219.html
     ina219_mcu: ina219@41 {
-        compatible = "ti,ina219";
+        status = "okay";
+
+        compatible = "ti,ina219-rtio";
         reg = <0x41>;
 
         //required
@@ -345,7 +347,7 @@
     };
 
     ina219_rf: ina219@42 {
-        compatible = "ti,ina219";
+        compatible = "ti,ina219-rtio";
         reg = <0x42>;
 
         //required
@@ -479,17 +481,17 @@
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB1, 14)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+             <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
 
-    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //accel
-                <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
     dmas = <&dmamux1 3 40 STM32_DMA_PERIPH_TX>,
            <&dmamux1 4 39 STM32_DMA_PERIPH_RX>;
 
-    ms5611_A: ms5611@0 {
+    ms5611_b: ms5611@0 {
         status = "okay";
 
         compatible = "ams,ms5611";
@@ -497,7 +499,7 @@
         spi-max-frequency = <1000000>;
     };
 
-    bmi088_gyro_A: bmi08x-gyro@1 {
+    bmi088_gyro_b: bmi08x-gyro@1 {
         status = "okay";
 
         compatible = "bosch,bmi08x-gyro";
@@ -510,7 +512,7 @@
         friendly-name="bmi088-gyro-A";
     };
 
-    bmi088_accel_A: bmi08x-accel@2 {
+    bmi088_accel_b: bmi08x-accel@2 {
         status = "okay";
         compatible = "bosch,bmi08x-accel";
         reg = <2>;
@@ -551,21 +553,21 @@
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB1, 15)>,
-            <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
+             <&rcc STM32_SRC_PLL2_P SPI123_SEL(1)>;
 
-    cs-gpios = <&gpiod 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     //ms56
-                <&gpiod 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //gyro
-                <&gpiod 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //acc
-                <&gpiod 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //icm
+    cs-gpios = <&gpiog 2 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,
+               <&gpiog 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
 
-    ms5611_B: ms5611@0 {
+    ms5611_a: ms5611@0 {
         status = "okay";
         compatible = "ams,ms5611";
         reg = <0>;
         spi-max-frequency = <1000000>;
     };
 
-    bmi088_gyro_B: bmi08x-gyro@1 {
+    bmi088_gyro_a: bmi08x-gyro@1 {
         status = "okay";
 
         compatible = "bosch,bmi08x-gyro";
@@ -578,7 +580,7 @@
         friendly-name="bmi088-gyro-B";
     };
 
-    bmi088_accel_B: bmi08x-accel@2 {
+    bmi088_accel_a: bmi08x-accel@2 {
         status = "okay";
         compatible = "bosch,bmi08x-accel";
         reg = <2>;
@@ -591,7 +593,7 @@
         friendly-name="bmi088-accel-B";
     };
 
-    icm42688p_B: icm42688p@3 {
+    icm42688p_a: icm42688p@3 {
         status = "okay";
         compatible = "invensense,icm42688", "invensense,icm4268x";
         reg = <3>;
@@ -619,12 +621,12 @@
     pinctrl-names = "default";
 
     clocks = <&rcc STM32_CLOCK(APB2, 13)>,
-            <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
+             <&rcc STM32_SRC_PLL3_Q SPI45_SEL(2)>;
 
     cs-gpios = <&gpiog 7 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,     // BMP585
-                <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //H3LIS331D
-                <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //LIS2MDL
-                <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //HSCDRRN001BDSA3
+               <&gpiog 8 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //H3LIS331D
+               <&gpiod 10 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>,    //LIS2MDL
+               <&gpiog 6 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;    //HSCDRRN001BDSA3
 
     bmp585_sens: bmp585@0 {
         //NOTA: bmp585 is the same silicon as bmp581 but with barbed input
