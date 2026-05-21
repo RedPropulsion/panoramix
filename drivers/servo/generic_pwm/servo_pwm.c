@@ -23,6 +23,7 @@ static int servo_pwm_set_position(const struct device *dev,
   uint32_t pulse_ns;
   int ret;
 
+  LOG_INF("SETTING SERVO TO %d deg", angle_mdeg / 1000);
   if (angle_mdeg < 0 || (uint32_t)angle_mdeg > cfg->max_angle_mdeg) {
     LOG_ERR("Angle %d mdeg out of range [0, %u]", angle_mdeg,
             cfg->max_angle_mdeg);

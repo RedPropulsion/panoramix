@@ -150,8 +150,8 @@ K_THREAD_DEFINE(sensor_proc_tid, 2048, sensor_processing_thread, NULL, NULL,
                 NULL, 5, 0, 0);
 
 int main(void) {
-  const struct device *main_servo =
-      DEVICE_DT_GET(DT_NODELABEL(servo_drogue_pwm));
+  // const struct device *main_servo =
+  //     DEVICE_DT_GET(DT_NODELABEL(servo_drogue_pwm));
 
   // while (1) {
   //   LOG_INF("VADO A 0");
