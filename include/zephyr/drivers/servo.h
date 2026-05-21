@@ -1,26 +1,30 @@
+#ifndef PANORAMIX_SERVO_API_H
+#define PANORAMIX_SERVO_API_H
+
 #include <zephyr/device.h>
 
 typedef int (*servo_set_position_t)(const struct device *dev,
                                     int32_t angle_mdeg);
 typedef int (*servo_get_position_t)(const struct device *dev,
                                     int32_t *angle_mdeg);
-typedef int (*servo_set_speed_t)(const struct device *dev,
-                                 uint16_t speed);
-typedef int (*servo_set_time_t)(const struct device *dev,
-                                uint16_t time_ms);
-typedef int (*servo_ping_t)(const struct device *dev);
-typedef int (*servo_enable_torque_t)(const struct device *dev);
-typedef int (*servo_disable_torque_t)(const struct device *dev);
+// <<<<<<< servo-st3215-driver
+// typedef int (*servo_set_speed_t)(const struct device *dev,
+//                                  uint16_t speed);
+// typedef int (*servo_set_time_t)(const struct device *dev,
+//                                 uint16_t time_ms);
+// typedef int (*servo_ping_t)(const struct device *dev);
+// typedef int (*servo_enable_torque_t)(const struct device *dev);
+// typedef int (*servo_disable_torque_t)(const struct device *dev);
 typedef int (*servo_get_status_t)(const struct device *dev, uint8_t *status);
 
 __subsystem struct servo_driver_api {
   servo_set_position_t set_position;
   servo_get_position_t get_position;
-  servo_set_speed_t set_speed;
-  servo_set_time_t set_time;
-  servo_ping_t ping;
-  servo_enable_torque_t enable_torque;
-  servo_disable_torque_t disable_torque;
+//   servo_set_speed_t set_speed;
+//   servo_set_time_t set_time;
+//   servo_ping_t ping;
+//   servo_enable_torque_t enable_torque;
+//   servo_disable_torque_t disable_torque;
   servo_get_status_t get_status;
 };
 
@@ -86,3 +90,4 @@ static inline int servo_get_status(const struct device *dev, uint8_t *status) {
   }
   return api->get_status(dev, status);
 }
+#endif // PANORAMXI_SERVO_API_H

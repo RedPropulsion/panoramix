@@ -1,0 +1,12 @@
+config ENCODER_INPUT
+    bool "Encoder input driver"
+    default n
+    help
+        Rotary encoder input driver for menu navigation
+config ENCODER_INPUT_LOG_LEVEL
+    int "Encoder input driver log level"
+    default 4
+    depends on ENCODER_INPUT
+    help
+        Log level for the encoder_input module.
+        0=OFF, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG

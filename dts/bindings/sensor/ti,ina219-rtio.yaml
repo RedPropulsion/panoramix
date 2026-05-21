@@ -1,0 +1,2 @@
+compatible: "ti,ina219-rtio"
+include: ["ti,ina219.yaml"]
