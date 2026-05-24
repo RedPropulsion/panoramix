@@ -106,8 +106,23 @@
         };
     };
 
+    buttons {
+        compatible = "gpio-keys";
+        debounce-interval-ms = <30>;  
+
+        button_down: button_down {
+            gpios = <&gpiof 13 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Button Down";
+        };
+
+        button_up: button_up {
+            gpios = <&gpiof 14 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+            label = "Button Up";
+        };
+    };
+
     servos {
-        servo_drogue_pwm: servo_drogue_pwm {
+        servo_ch1: servo_ch1 {
             compatible = "generic,pwm-servo";
 
             // canale 1, 20ms period (50Hz)
@@ -116,9 +131,22 @@
             min-pulse = <PWM_USEC(500)>;
             max-pulse = <PWM_USEC(2500)>;
             max-angle = <270000>; // in mdeg
+            initial-angle = <270000>;  // in mdeg
         };
 
-        servo_main_pwm: servo_main_pwm {
+        servo_ch2: servo_ch2 {
+            compatible = "generic,pwm-servo";
+
+            // canale 2, 20ms period (50Hz)
+            pwms = <&pwm3 2 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+
+            min-pulse = <PWM_USEC(500)>;
+            max-pulse = <PWM_USEC(2500)>;
+            max-angle = <270000>; // in mdeg
+            initial-angle = <270000>;  // in mdeg
+        };
+
+        servo_ch3: servo_ch3 {
             compatible = "generic,pwm-servo";
 
             // canale 3, 20ms period (50Hz)
@@ -127,6 +155,19 @@
             min-pulse = <PWM_USEC(500)>;
             max-pulse = <PWM_USEC(2500)>;
             max-angle = <270000>; // in mdeg
+            initial-angle = <270000>;  // in mdeg
+        };
+
+        servo_ch4: servo_ch4 {
+            compatible = "generic,pwm-servo";
+
+            // canale 3, 20ms period (50Hz)
+            pwms = <&pwm3 4 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+
+            min-pulse = <PWM_USEC(500)>;
+            max-pulse = <PWM_USEC(2500)>;
+            max-angle = <270000>; // in mdeg
+            initial-angle = <270000>;  // in mdeg
         };
     };
 
@@ -171,7 +212,7 @@
 
             startup-delay-us = <200>;
 
-            regulator-boot-off;
+            regulator-boot-on;
         };
 
         runcam_vdd: regulator_runcam_vdd {
@@ -796,7 +837,7 @@
     pwm3: pwm {
         status = "okay";
 
-        pinctrl-0 = <&tim3_ch1_pc6 &tim3_ch3_pc8>;
+        pinctrl-0 = <&tim3_ch1_pc6 &tim3_ch2_pc7 &tim3_ch3_pc8 &tim3_ch4_pc9>;
         pinctrl-names = "default";
     };
 };

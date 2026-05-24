@@ -54,6 +54,13 @@ properties:
       Use the PWM_USEC() or PWM_MSEC() macros in the overlay:
         max-pulse = <PWM_USEC(2000)>;
 
+  initial-angle:
+    type: int
+    default: 0
+    description: |
+      Default angle where the servo is set to on startup, in
+      milli-degrees.
+
   max-angle:
     type: int
     default: 180000
