@@ -1,0 +1,5 @@
+config SENSOR_HSC
+    bool "HSCxxxxxxx Pressure sensor"
+    depends on DT_HAS_HONEYWELL_HSC_ENABLED
+    select SPI
+    default y
