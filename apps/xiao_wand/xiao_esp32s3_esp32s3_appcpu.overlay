@@ -1,0 +1,3 @@
+/* appcpu overlay — no peripherals assigned */
+/ {
+};
