@@ -1,0 +1,5 @@
+if(CONFIG_UDP_CLIENT)
+  zephyr_library()
+  zephyr_library_sources(src/udp_client.c)
+  zephyr_include_directories(include)
+endif()
