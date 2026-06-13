@@ -1,0 +1,206 @@
+/*
+ * wio_test/src/main.c
+ *
+ * App di test minimale per XIAO ESP32-S3 + Wio-SX1262 (connettore B2B).
+ *
+ * Comportamento:
+ *   - All'avvio testa la radio SX1262 (config + TX di un pacchetto).
+ *   - Il LED verde lampeggia lentamente (1 Hz) per indicare che il
+ *     firmware è in esecuzione.
+ *   - Premendo il bottone viene trasmesso un pacchetto LoRa di test
+ *     e il LED lampeggia velocemente (5 Hz) per 1 secondo come
+ *     feedback visivo.
+ *   - Tutti gli eventi vengono stampati sulla console seriale (USB).
+ *
+ * Alias usati dall'overlay:
+ *   lora0  → lora_sx1262
+ *   led_0  → led_wio (GPIO48, active HIGH)
+ *   sw0    → user_button (GPIO21, active LOW)
+ */
+
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/lora.h>
+#include <zephyr/input/input.h>
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(wio_test, LOG_LEVEL_DBG);
+
+/* ── Device Tree nodes ──────────────────────────────────────────── */
+
+/* Nota: l'alias nell'overlay è "led_0" (con underscore) */
+#define LED_NODE    DT_ALIAS(led_0)
+#define BUTTON_NODE DT_ALIAS(sw0)
+#define LORA_NODE   DT_ALIAS(lora0)
+
+/* ── GPIO specs ─────────────────────────────────────────────────── */
+static const struct gpio_dt_spec led    = GPIO_DT_SPEC_GET(LED_NODE, gpios);
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(BUTTON_NODE, gpios);
+
+/* ── LoRa config ────────────────────────────────────────────────── */
+#define LORA_FREQUENCY      868100000   /* 868.1 MHz – EU868 canale 0  */
+#define LORA_BANDWIDTH      BW_125_KHZ
+#define LORA_DATARATE       SF_7
+#define LORA_PREAMBLE_LEN   8
+#define LORA_CODING_RATE    CR_4_5
+#define LORA_TX_POWER       14          /* dBm – max legale EU: 14 dBm */
+
+static const uint8_t tx_payload[] = "XIAO+WIO TEST";
+
+/* ── Stato condiviso con ISR bottone ────────────────────────────── */
+static volatile bool button_pressed;
+
+/* ── Callback bottone (input subsystem) ─────────────────────────── */
+static void button_cb(struct input_event *evt, void *user_data)
+{
+    ARG_UNUSED(user_data);
+
+    /* Filtra solo il key-down (value == 1) del codice KEY_0 */
+    if (evt->type == INPUT_EV_KEY &&
+        evt->code == INPUT_KEY_0 &&
+        evt->value == 1) {
+        button_pressed = true;
+    }
+}
+INPUT_CALLBACK_DEFINE(NULL, button_cb, NULL);
+
+/* ── Helpers LED ─────────────────────────────────────────────────── */
+static void led_blink(int times, int period_ms)
+{
+    for (int i = 0; i < times; i++) {
+        gpio_pin_set_dt(&led, 1);
+        k_msleep(period_ms / 2);
+        gpio_pin_set_dt(&led, 0);
+        k_msleep(period_ms / 2);
+    }
+}
+
+/* ── TX LoRa ────────────────────────────────────────────────────── */
+static int lora_send_test(const struct device *lora_dev)
+{
+    int ret;
+
+    LOG_INF("TX: \"%s\" (%d byte) @ %d MHz SF%d BW125 %d dBm",
+            tx_payload, sizeof(tx_payload) - 1,
+            LORA_FREQUENCY / 1000000,
+            LORA_DATARATE == SF_7  ? 7  :
+            LORA_DATARATE == SF_8  ? 8  :
+            LORA_DATARATE == SF_9  ? 9  : 0,
+            LORA_TX_POWER);
+
+    ret = lora_send(lora_dev,
+                    (uint8_t *)tx_payload,
+                    sizeof(tx_payload) - 1);  /* escludi il '\0' */
+    if (ret < 0) {
+        LOG_ERR("lora_send() fallito: %d", ret);
+    } else {
+        LOG_INF("Pacchetto trasmesso correttamente");
+    }
+    return ret;
+}
+
+/* ── main ────────────────────────────────────────────────────────── */
+int main(void)
+{
+    int ret;
+
+    LOG_INF("=== XIAO ESP32-S3 + Wio-SX1262 — test avvio ===");
+
+    /* ── 1. LED ──────────────────────────────────────────────────── */
+    if (!gpio_is_ready_dt(&led)) {
+        LOG_ERR("LED non pronto");
+        return -ENODEV;
+    }
+    ret = gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+    if (ret < 0) {
+        LOG_ERR("Configurazione LED fallita: %d", ret);
+        return ret;
+    }
+    LOG_INF("LED OK (GPIO%d)", led.pin);
+
+    /* ── 2. Bottone ──────────────────────────────────────────────── */
+    if (!gpio_is_ready_dt(&button)) {
+        LOG_ERR("Bottone non pronto");
+        return -ENODEV;
+    }
+    ret = gpio_pin_configure_dt(&button, GPIO_INPUT);
+    if (ret < 0) {
+        LOG_ERR("Configurazione bottone fallita: %d", ret);
+        return ret;
+    }
+    LOG_INF("Bottone OK (GPIO%d)", button.pin);
+
+    /* ── 3. LoRa ─────────────────────────────────────────────────── */
+    const struct device *lora_dev = DEVICE_DT_GET(DT_ALIAS(lora0));
+    if (!device_is_ready(lora_dev)) {
+        LOG_ERR("SX1262 non pronto — controlla SPI e GPIO");
+        /* Lampeggio rapido infinito per segnalare errore hardware */
+        while (1) {
+            led_blink(3, 100);
+            k_msleep(500);
+        }
+    }
+    LOG_INF("SX1262 pronto");
+
+    /* Configurazione radio */
+    struct lora_modem_config lora_cfg = {
+        .frequency       = LORA_FREQUENCY,
+        .bandwidth       = LORA_BANDWIDTH,
+        .datarate        = LORA_DATARATE,
+        .preamble_len    = LORA_PREAMBLE_LEN,
+        .coding_rate     = LORA_CODING_RATE,
+        .tx_power        = LORA_TX_POWER,
+        .tx              = true,
+    };
+
+    ret = lora_config(lora_dev, &lora_cfg);
+    if (ret < 0) {
+        LOG_ERR("lora_config() fallito: %d", ret);
+        while (1) {
+            led_blink(5, 100);
+            k_msleep(500);
+        }
+    }
+    LOG_INF("LoRa configurato: %d MHz, SF%d, BW125, CR4/5, %d dBm",
+            LORA_FREQUENCY / 1000000,
+            LORA_DATARATE == SF_7 ? 7 : LORA_DATARATE == SF_8 ? 8 : 9,
+            LORA_TX_POWER);
+
+    /* TX iniziale per verificare che la radio funzioni */
+    LOG_INF("--- TX iniziale di verifica ---");
+    ret = lora_send_test(lora_dev);
+    if (ret == 0) {
+        /* 2 lampeggi lenti = tutto OK */
+        led_blink(2, 400);
+    }
+
+    LOG_INF("--- Loop principale ---");
+    LOG_INF("Premi il bottone per trasmettere un pacchetto LoRa.");
+
+    /* ── Loop principale ─────────────────────────────────────────── */
+    bool led_state = false;
+
+    while (1) {
+        /* Lampeggio lento (1 Hz) a indicare firmware attivo */
+        led_state = !led_state;
+        gpio_pin_set_dt(&led, led_state ? 1 : 0);
+
+        if (button_pressed) {
+            button_pressed = false;
+            LOG_INF("Bottone premuto!");
+
+            /* TX sul bottone */
+            ret = lora_send_test(lora_dev);
+
+            /* Feedback visivo: 5 lampeggi rapidi */
+            gpio_pin_set_dt(&led, 0);   /* spegni prima */
+            led_blink(5, 200);
+        }
+
+        k_msleep(500);  /* mezzo periodo del lampeggio lento */
+    }
+
+    return 0;
+}

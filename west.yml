@@ -16,6 +16,7 @@ manifest:
           - lora-basics-modem
           - hal_semtech
           - fatfs
+          - hal_espressif
 
     - name: zephyr-mavlink
       url: https://github.com/RedPropulsion/zephyr-mavlink.git

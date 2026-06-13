@@ -1,0 +1,96 @@
+#include <dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <dt-bindings/lora/sx126x.h>
+
+/*
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │  Connettore B2B 30-pin → GPIO ESP32-S3                              │
+ * ├──────────────────────────┬──────────────────────────────────────────┤
+ * │  LORA_SPI_MOSI           │  GPIO 9                                  │
+ * │  LORA_SPI_MISO           │  GPIO 8                                  │
+ * │  LORA_SPI_SCK            │  GPIO 7                                  │
+ * │  LORA_SPI_NSS  (CS)      │  GPIO 41                                 │
+ * │  LORA_RST                │  GPIO 42                                 │
+ * │  LORA_BUSY               │  GPIO 40                                 │
+ * │  LORA_DIO1               │  GPIO 39                                 │
+ * │  LORA_RF_SW1/tx-enable   │  GPIO 38                                 │
+ * ├──────────────────────────┼──────────────────────────────────────────┤
+ * │  LED verde  (Wio PCB)    │  GPIO48  active HIGH                     │
+ * ├──────────────────────────┼──────────────────────────────────────────┤
+ * │  User Button (Wio PCB)   │  GPIO21  active LOW                      │
+ * └──────────────────────────┴──────────────────────────────────────────┘
+ */
+
+/ {
+	aliases {
+		lora0 = &lora_sx1262;
+		sw0   = &user_button;
+		led-0 = &led_wio;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		led_wio: led_0 {
+			gpios = <&gpio1 16 GPIO_ACTIVE_HIGH>;
+			label = "Wio-SX1262 LED (green)";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		user_button: button_0 {
+			gpios = <&gpio0 21 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			label = "Wio-SX1262 User Button";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+};
+
+/* ── Ridefinisci spim2_default con i GPIO del connettore B2B ───── */
+&pinctrl {
+	spim2_default: spim2_default {
+		group1 {
+			/* MISO: input */
+			pinmux = <SPIM2_MISO_GPIO8>;
+			input-enable;
+			bias-pull-up;
+		};
+		group2 {
+			/* MOSI: output */
+			pinmux = <SPIM2_MOSI_GPIO9>;
+			output-low;
+		};
+		group3 {
+			/* SCK e CS: output */
+			pinmux = <SPIM2_SCLK_GPIO7>;
+		};
+	};
+};
+
+/* ── SPI2 con pinctrl ridefinito ─────────────────────────────────── */
+&spi2 {
+	status = "okay";
+	pinctrl-0 = <&spim2_default>;
+	pinctrl-names = "default";
+
+	cs-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
+
+	lora_sx1262: lora@0 {
+		compatible = "semtech,sx1262";
+		reg = <0>;
+		spi-max-frequency = <1000000>;
+		label = "Wio-SX1262";
+
+		reset-gpios      = <&gpio1 10 (GPIO_ACTIVE_LOW)>;
+		busy-gpios       = <&gpio1 8 (GPIO_ACTIVE_HIGH)>;
+		dio1-gpios       = <&gpio1 7 GPIO_ACTIVE_HIGH>;
+		tx-enable-gpios  = <&gpio1 6 GPIO_ACTIVE_HIGH>;
+
+		tcxo-power-startup-delay-ms = <5>;
+		dio3-tcxo-voltage = <SX126X_DIO3_TCXO_3V3>;
+	};
+};
+
+&gpio1 {
+    status = "okay";
+};
