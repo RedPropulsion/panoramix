@@ -1,5 +1,6 @@
 #include <dt-bindings/input/input-event-codes.h>
 #include <zephyr/dt-bindings/pinctrl/esp32s3-pinctrl.h>
+#include <dt-bindings/lora/sx126x.h>
 
 /*
  * ┌─────────────────────────────────────────────────────────────────────┐
@@ -82,10 +83,11 @@
 
 		reset-gpios      = <&gpio1 10 (GPIO_ACTIVE_LOW)>;
 		busy-gpios       = <&gpio1 8 (GPIO_ACTIVE_HIGH)>;
-		dio1-gpios       = <&gpio1 7 (GPIO_ACTIVE_HIGH)>;
+		dio1-gpios       = <&gpio1 7 GPIO_ACTIVE_HIGH>;
 		tx-enable-gpios  = <&gpio1 6 GPIO_ACTIVE_HIGH>;
 
-		dio2-tx-enable;
+		tcxo-power-startup-delay-ms = <5>;
+		dio3-tcxo-voltage = <SX126X_DIO3_TCXO_3V3>;
 	};
 };
 
