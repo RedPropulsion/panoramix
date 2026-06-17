@@ -34,3 +34,7 @@ jobs:
       - name: Build ObelICS
         run: |
           west build app/apps/obelics -p
+
+      - name: Build CacofonICS
+        run: |
+          west build app/apps/cacofonics -p

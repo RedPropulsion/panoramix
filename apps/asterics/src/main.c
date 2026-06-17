@@ -1,12 +1,16 @@
+#include <mavwrap.h>
+#include <string.h>
+
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/drivers/sensor_data_types.h>
 #include <zephyr/drivers/servo.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/rtio/rtio.h>
 #include <zephyr/sensing/sensing.h>
+#include <zephyr/smf.h>
 
 #include <stddef.h>
 
@@ -93,94 +97,140 @@ static const char *const sensor_channel_name[SENSOR_CHAN_COMMON_COUNT] = {
 
 LOG_MODULE_REGISTER(main);
 
-SENSOR_DT_READ_IODEV(mcu_ms5611_iodev, DT_NODELABEL(mcu_ms5611),
-                     {
-                         SENSOR_CHAN_PRESS,
-                         0,
-                     },
-                     {SENSOR_CHAN_AMBIENT_TEMP, 0});
+#define RX_QUEUE_SIZE 16
 
-SENSOR_DT_READ_IODEV(mcu_ina219_iodev, DT_NODELABEL(ina219_mcu),
-                     {
-                         SENSOR_CHAN_VOLTAGE,
-                         0,
-                     });
+static const struct device *mavlink_usart =
+    DEVICE_DT_GET(DT_NODELABEL(mavlink_usart));
 
-RTIO_DEFINE_WITH_MEMPOOL(sensor_ctx, 16, 16, 16, 256, sizeof(void *));
+K_MSGQ_DEFINE(rx_queue, sizeof(mavlink_message_t), RX_QUEUE_SIZE,
+              sizeof(void *));
 
-static void on_sensor_data(int ret, uint8_t *buf, uint32_t buf_len,
-                           void *userdata) {
-  const struct rtio_iodev *iodev_sqe = userdata;
-  const struct sensor_read_config *cfg = iodev_sqe->data;
-  const struct device *dev = cfg->sensor;
+const struct device *servos[] = {
+    DEVICE_DT_GET(DT_NODELABEL(servo_main_pwm)),
+    DEVICE_DT_GET(DT_NODELABEL(servo_drogue_pwm)),
+};
 
-  if (ret < 0) {
-    LOG_ERR("Reading failed for %s: %s", dev->name, strerror(-ret));
+struct exec_ctx {
+  // MUST be the first element in the struct
+  struct smf_ctx ctx;
+} exec_ctx_obj;
+
+enum state { BOOT, IDLE, CALIBRATION, MANUAL, STREAM, ARMED, LAUNCH };
+// Forward declaration
+const struct smf_state states[];
+
+static void set_servo(uint8_t servo_id, uint32_t deg) {
+  if (servo_id >= ARRAY_SIZE(servos)) {
+    LOG_ERR("Invalid servo_id: %d", servo_id);
     return;
   }
 
-  const struct sensor_decoder_api *decoder;
-  ret = sensor_get_decoder(dev, &decoder);
+  servo_set_position(servos[servo_id], deg * 1000);
+}
+
+static enum smf_state_result boot_run(void *o) {
+  LOG_WRN("Not implemented");
+
+  smf_set_state(SMF_CTX(&exec_ctx_obj), &states[IDLE]);
+  return SMF_EVENT_HANDLED;
+}
+
+static enum smf_state_result idle_run(void *o) {
+  mavlink_message_t message;
+  int ret = k_msgq_get(&rx_queue, &message, K_NO_WAIT);
   if (ret < 0) {
-    LOG_ERR("Couldn't get decoder for %s: %s", dev->name, strerror(-ret));
-    return;
+    return SMF_EVENT_HANDLED;
   }
 
-  for (size_t i = 0; i < cfg->count; i++) {
-    uint16_t frame_count;
-    if (decoder->get_frame_count(buf, cfg->channels[i], &frame_count) != 0)
-      continue;
-    uint32_t fit = 0;
-    struct sensor_q31_data out;
-    decoder->decode(buf, cfg->channels[i], &fit, 1, &out);
-    if (fit > 0) {
-      LOG_INF("%s=%" PRIsensor_q31_data,
-              sensor_channel_name[cfg->channels[i].chan_type],
-              PRIsensor_q31_data_arg(out, 0));
+  LOG_INF("Got message id: %d", message.msgid);
+
+  if (message.msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
+    mavlink_command_long_t cmd;
+    mavlink_msg_command_long_decode(&message, &cmd);
+
+    if (cmd.command == MAV_CMD_DO_SET_MODE) {
+      switch ((int)cmd.param2) {
+      case 12:
+        LOG_INF("GOING TO MANUAL MODE");
+        smf_set_state(SMF_CTX(&exec_ctx_obj), &states[MANUAL]);
+        break;
+      default:
+        LOG_ERR("Invalid custom mode code %d", (int)cmd.param2);
+        break;
+      }
+    } else {
+      LOG_ERR("Invalid cmd %d", cmd.command);
     }
   }
+
+  return SMF_EVENT_HANDLED;
 }
 
-static void sensor_processing_thread(void *a, void *b, void *c) {
-  while (1) {
-    sensor_processing_with_callback(&sensor_ctx, on_sensor_data);
+static enum smf_state_result manual_run(void *o) {
+  mavlink_message_t message;
+  int ret = k_msgq_get(&rx_queue, &message, K_NO_WAIT);
+  if (ret < 0) {
+    return SMF_EVENT_HANDLED;
+  }
+
+  LOG_INF("Got message id: %d", message.msgid);
+
+  if (message.msgid == MAVLINK_MSG_ID_COMMAND_LONG) {
+    mavlink_command_long_t cmd;
+    mavlink_msg_command_long_decode(&message, &cmd);
+
+    if (cmd.command == MAV_CMD_DO_SET_MODE) {
+      switch ((int)cmd.param2) {
+      case 14:
+        LOG_INF("GOING TO IDLE MODE");
+        smf_set_state(SMF_CTX(&exec_ctx_obj), &states[MANUAL]);
+        break;
+      default:
+        LOG_ERR("Invalid custom mode code %d", (int)cmd.param2);
+        break;
+      }
+    } else if (cmd.command == MAV_CMD_DO_SET_SERVO) {
+      set_servo(cmd.param1, cmd.param2);
+    } else {
+      LOG_ERR("Invalid cmd %d", cmd.command);
+    }
+  }
+
+  return SMF_EVENT_HANDLED;
+}
+
+const struct smf_state states[] = {
+    [BOOT] = SMF_CREATE_STATE(NULL, boot_run, NULL, NULL, NULL),
+    [IDLE] = SMF_CREATE_STATE(NULL, idle_run, NULL, NULL, NULL),
+    [CALIBRATION] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL, NULL),
+    [MANUAL] = SMF_CREATE_STATE(NULL, manual_run, NULL, NULL, NULL),
+    [STREAM] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL, NULL),
+    [ARMED] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL, NULL),
+    [LAUNCH] = SMF_CREATE_STATE(NULL, NULL, NULL, NULL, NULL),
+};
+
+static void usart_rx_callback(const struct device *dev,
+                              const mavlink_message_t *msg, void *user_data) {
+  int ret = k_msgq_put(&rx_queue, msg, K_NO_WAIT);
+  if (ret < 0) {
+    LOG_ERR("Queue overflow, clearing...");
+    k_msgq_purge(&rx_queue);
+    k_msgq_put(&rx_queue, msg, K_NO_WAIT);
   }
 }
-K_THREAD_DEFINE(sensor_proc_tid, 2048, sensor_processing_thread, NULL, NULL,
-                NULL, 5, 0, 0);
 
 int main(void) {
-  const struct device *main_servo =
-      DEVICE_DT_GET(DT_NODELABEL(servo_drogue_pwm));
+  LOG_INF("The board started!");
+  smf_set_initial(SMF_CTX(&exec_ctx_obj), &states[BOOT]);
+  mavwrap_start(mavlink_usart, usart_rx_callback, NULL);
 
-  // while (1) {
-  //   LOG_INF("VADO A 0");
-  //   servo_set_position(main_servo, 0);
-  //   k_sleep(K_MSEC(5000));
-  //
-  //   LOG_INF("VADO A mid");
-  //   servo_set_position(main_servo, 135 * 1000);
-  //   k_sleep(K_MSEC(5000));
-  //
-  //   LOG_INF("VADO A MAX");
-  //   servo_set_position(main_servo, 270 * 1000);
-  //   k_sleep(K_MSEC(10000));
-  // }
   while (1) {
-    int ret = sensor_read_async_mempool(&mcu_ms5611_iodev, &sensor_ctx,
-                                        &mcu_ms5611_iodev);
+    int32_t ret = smf_run_state(SMF_CTX(&exec_ctx_obj));
     if (ret < 0) {
-      LOG_ERR("Couldn't perform read: %s", strerror(-ret));
+      LOG_ERR("The state machine crashed: %s\n", strerror(-ret));
     }
-
-    ret = sensor_read_async_mempool(&mcu_ina219_iodev, &sensor_ctx,
-                                    &mcu_ina219_iodev);
-    if (ret < 0) {
-      LOG_ERR("Couldn't perform read: %s", strerror(-ret));
-    }
-
-    k_sleep(K_MSEC(5000));
   }
+  return 0;
 }
 
 void k_sys_fatal_error_handler(unsigned int reason,

@@ -1,0 +1,2 @@
+config BOARD_CACOFONICS
+    select SOC_STM32L412XX
