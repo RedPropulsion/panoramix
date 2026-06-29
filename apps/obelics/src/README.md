@@ -1,3 +1,8 @@
+---
+tags:
+  - docs/redpropulsion/obelics
+---
+
 # Obelix
 
 Obelix is the ground system for the RedAster project, made to run with the on board software of the AsterICS.

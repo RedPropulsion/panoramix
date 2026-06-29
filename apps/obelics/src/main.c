@@ -1,103 +1,31 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/drivers/lora.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/fs/fs.h>
-#include <zephyr/storage/disk_access.h>
-#include <zephyr/drivers/led_strip.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/fs/fs.h>
 #include <zephyr/storage/disk_access.h>
-#include <zephyr/drivers/led_strip.h>
 #include <zephyr/display/cfb.h>
-#include <zephyr/drivers/i2c.h>
-
-
 #include <cfb_font_templeos.h>
-#include <mavwrap.h>
 #include <gnss_u_blox_m10.h>
-#include <file_logger.h>
 #include <display.h>
-#include <menu.h>
-
-
-
-LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 
 
 /* ------------------------------------------------------------------ *
  * MavWrap
  * ------------------------------------------------------------------ */
-#define RX_QUEUE_SIZE 16
-
-static const struct device *mavlink_lora =
-    DEVICE_DT_GET(DT_NODELABEL(mavlink_lora));
- 
-static const struct device *mavlink_udp =
-    DEVICE_DT_GET(DT_NODELABEL(mavlink_netif));
-// K_MSGQ_DEFINE(rx_queue, sizeof(mavlink_message_t), RX_QUEUE_SIZE,
-//               sizeof(void *));
 
 
-static void lora_rx_callback(const struct device *dev,
-                              const mavlink_message_t *msg, void *user_data) {
-  LOG_INF("Received Packet!");
-  // int ret = k_msgq_put(&rx_queue, msg, K_NO_WAIT);
-  // if (ret < 0) {
-  //   LOG_ERR("Queue overflow, clearing...");
-  //   k_msgq_purge(&rx_queue);
-  //   k_msgq_put(&rx_queue, msg, K_NO_WAIT);
-  // }
 
-  int from_lora = dev == mavlink_lora;
 
-  LOG_INF("%s: Got msgid: %d", from_lora ? "LORA" : "UDP", msg->msgid);
 
-  struct mavwrap_stats stats;
-  int ret = mavwrap_get_stats(dev, &stats);
-  if (ret < 0) {
-    LOG_ERR("\tCouldn't get %s stats: %s", from_lora ? "LORA" : "UDP",
-            strerror(-ret));
-  } else {
-    if (from_lora) {
-      LOG_INF("\tRSSI: %d\tSNR: %d", stats.rx_rssi, stats.rx_snr);
-      // lora_set_state_led(stats.rx_snr);
-    }
-    if (stats.tx_errors) {
-      LOG_WRN("\ttx errors: %d", stats.tx_errors);
-    }
-  }
-  menu_update_lora_stats(stats.rx_packets, stats.tx_packets,stats.rx_rssi, stats.rx_snr );
-
-  mavwrap_send_message(from_lora ? mavlink_udp : mavlink_udp, msg);
-}
 
 /* ------------------------------------------------------------------ *
  * File logger
  * ------------------------------------------------------------------ */
 
-static struct file_logger_file log_file;
-
-static void init_storage(void)
-{
-    int ret = file_logger_init();
-    if (ret < 0) {
-        LOG_ERR("Failed to init file logger: %d", ret);
-        return;
-    }
-
-    ret = file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
-    if (ret < 0) {
-        LOG_ERR("Failed to open log file: %d", ret);
-        return;
-    }
-
-    LOG_INF("File logger initialized and log file opened");
-}
 
 /* ------------------------------------------------------------------ *
  * LoRa
@@ -149,35 +77,10 @@ static struct gpio_callback btn_cb_data;
 //     }
 // }
 
-// void button_handler(const struct device *dev, struct gpio_callback *cb,
-//                     uint32_t pins)
-// {
-//     k_work_submit(&button_work);
-// }
-
 /* ------------------------------------------------------------------ *
  * LED blink timers
  * ------------------------------------------------------------------ */
-struct led_data {
-    struct gpio_dt_spec gpio;
-    struct k_timer timer;
-    int index;
-};
 
-static struct led_data leds[] = {
-    { .gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios), .index = 0 },
-    { .gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led1), gpios), .index = 1 },
-    { .gpio = GPIO_DT_SPEC_GET(DT_ALIAS(led2), gpios), .index = 2 }
-};
-
-volatile int selected_led = 0;
-volatile uint32_t intervals[] = {500, 500, 500};
-
-void led_timer_handler(struct k_timer *timer_id) {
-    struct led_data *led = CONTAINER_OF(timer_id, struct led_data, timer);
-    gpio_pin_toggle_dt(&led->gpio);
-    k_timer_start(&led->timer, K_MSEC(intervals[led->index]), K_NO_WAIT);
-}
 
 /* ------------------------------------------------------------------ *
  * Oled Display
@@ -198,29 +101,23 @@ const struct device *i2c_dev = DEVICE_DT_GET(DT_NODELABEL(i2c2));
  * ------------------------------------------------------------------ */
 int main(void)
 {   
-     LOG_INF("Starting main()");
+    LOG_INF("Starting main()");
     int ret;
 
-    mavwrap_start(mavlink_lora, lora_rx_callback, NULL);
-    mavwrap_start(mavlink_udp, lora_rx_callback, NULL);
+    
     // udp_client_init();
     
     
 
-    if (!device_is_ready(i2c_dev)) {
-        LOG_ERR("I2C device not ready");
-        return 0;
-    }
+    // if (!device_is_ready(i2c_dev)) {
+    //     LOG_ERR("I2C device not ready");
+    //     return 0;
+    // }
     // i2c_scan_bus(i2c_dev);
 
 
 /* Oled Display */
-    ret = display_init();
-    if (ret < 0) {
-        LOG_ERR("Display init failed: %d", ret);
-    }
-    display_string("test");
-    display_update_row(0, "Starting");
+    
 
     // cfb_framebuffer_finalize(disp);
 
@@ -239,31 +136,7 @@ int main(void)
 
     // cfb_framebuffer_set_font(disp, 0);
 
-    #ifdef CONFIG_FAT_FILESYSTEM_ELM
-    /* Initialize file logger */
-    init_storage();
-
-    /* Write test message to log file */
-    ret = file_logger_write_str(&log_file, "Start\n");
-    if (ret < 0) {
-        LOG_ERR("Failed to write to log file: %d", ret);
-    } else {
-        file_logger_flush(&log_file);
-        LOG_DBG("Wrote test to log file"); 
-    }
-
-    /* Read back to verify */
-    file_logger_seek(&log_file, 0, FS_SEEK_SET);
-    char read_buff[64];
-    int len = file_logger_read_str(&log_file, read_buff, sizeof(read_buff));
-    LOG_INF("Log file content (%d bytes): %s", len, read_buff);
-
-    /* Clear log file content by removing and recreating it */
-    file_logger_close(&log_file);
-    file_logger_remove("/SD:/packets.log");
-    file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
-    display_update_row(1, "Storage Ok");
-    #endif
+    
     
     // /* Initialize LoRa device */
     // if (!device_is_ready(lora_dev)) {
@@ -287,36 +160,13 @@ int main(void)
     //     }
     // }
 
-    /* Neopixel enable */
-    gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
-    gpio_pin_set_dt(&neopixel_en, 1);
-
-    if (!device_is_ready(strip)) {
-        LOG_ERR("LED strip device not ready");
-        return -ENODEV;
-    }
-
-
-    if (!device_is_ready(buzzer.dev)) {
-        LOG_ERR("Buzzer PWM not ready");
-        return -ENODEV;
-    }
+    
     // k_work_init(&button_work, button_work_handler);
     // sound_init(&buzzer);
 
     
     /* LEDs */
-    for (int i = 0; i < ARRAY_SIZE(leds); i++) {
-        if (!gpio_is_ready_dt(&leds[i].gpio)) {
-            LOG_ERR("LED %d not ready", i);
-            return 0;
-        }
-        gpio_pin_configure_dt(&leds[i].gpio, GPIO_OUTPUT_ACTIVE);
-        k_timer_init(&leds[i].timer, led_timer_handler, NULL);
-        k_timer_start(&leds[i].timer, K_MSEC(intervals[i]), K_NO_WAIT);
-    }
-
-    display_update_row(2, "LED,Sound OK");
+    
 
 
     /* B1 User button */
@@ -333,7 +183,7 @@ int main(void)
 
     // display_update_row(3, "Buttons OK");
 
-    display_update_row(4, "UDP init");
+    
     // udp_client_init();
     display_update_row(5, "UDP Ok");
 
@@ -347,22 +197,20 @@ int main(void)
     }
 
 
-    struct led_rgb pixels[NUM_LEDS] = {0};
+
     bool toggle = false;
     // uint8_t tx_buf[] = "Hello from Obelics!";
     
 
     // display_string("Main loop");
-    display_update_row(7, "Init complete");
-    k_sleep(K_MSEC(1000));
+
 
     // display_clear_text();
 
     LOG_INF("Menu: init ");
     menu_init(mavlink_lora, mavlink_udp, &buzzer);
 
-    LOG_INF("Menu: Starting");
-    menu_start();
+    
 
     LOG_INF("Starting main loop...");
     // int lora_counter = 0;
@@ -380,18 +228,16 @@ int main(void)
         //     }
         // }
 
-        memset(pixels, 0, sizeof(pixels));
-        if (toggle) {
-            pixels[0].r = 128;
-            pixels[3].r = 128;
-            pixels[3].b = 128;
-        } else {
-            pixels[1].b = 128;
-            pixels[2].g = 128;
-        }
-        toggle = !toggle;
-
-        led_strip_update_rgb(strip, pixels, NUM_LEDS);
+        
+        // if (toggle) {
+        //     pixels[0].r = 128;
+        //     pixels[3].r = 128;
+        //     pixels[3].b = 128;
+        // } else {
+        //     pixels[1].b = 128;
+        //     pixels[2].g = 128;
+        // }
+        // toggle = !toggle;        
 
         
 

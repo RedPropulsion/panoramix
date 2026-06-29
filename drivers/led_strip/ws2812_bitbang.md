@@ -1,3 +1,8 @@
+---
+tags:
+  - docs/redpropulsion
+---
+
 # Timing
 Each LED watched the DataIN line for informations, lenght of pulse encodes symbol (`0` ir `1`).
 ```

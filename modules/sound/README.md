@@ -1,3 +1,8 @@
+---
+tags:
+  - docs/redpropulsion
+---
+
 # Sound
 
 Timer-driven buzzer library for Zephyr RTOS. Fire-and-forget: play_sound() returns immediately, timer callback handles sequencing in ISR context.

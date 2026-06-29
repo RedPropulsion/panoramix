@@ -1,3 +1,8 @@
+---
+tags:
+  - docs/redpropulsion
+---
+
 # u-blox M10 GNSS Driver
 
 Driver for u-blox MAX-M10S GNSS module over I2C. Supports UBX-NAV-PVT messages at 25Hz with dual timestamps (GPS nanosecond-precise + CPU microsecond).
