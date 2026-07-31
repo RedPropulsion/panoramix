@@ -337,7 +337,9 @@ int main(void)
         }
         toggle = !toggle;
 
-        led_strip_update_rgb(strip, pixels, NUM_LEDS);
+        if (!menu_demo_active()) {
+            led_strip_update_rgb(strip, pixels, NUM_LEDS);
+        }
 
         
 

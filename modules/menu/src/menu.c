@@ -6,6 +6,8 @@ LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
 #include <zephyr/device.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/display/cfb.h>
+#include <zephyr/drivers/led_strip.h>
+//#include <zephyr/drivers/servo.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +16,9 @@ LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
 #include <encoder_input.h>
 
 #define MIN_REDRAW_MS CONFIG_LIB_MENU_MIN_REDRAW_MS
+#define STRIP_NODE DT_NODELABEL(led_strip)
+#define NUM_LEDS DT_PROP(STRIP_NODE, chain_length)
+
 
 K_SEM_DEFINE(menu_data_sem, 0, 1);
 
@@ -22,6 +27,21 @@ struct menu_display_data menu_data = {0};
 static struct menu_state state = {0};
 static const struct device *disp;
 static uint32_t last_redraw = 0;
+
+static struct menu demo_neopixels_menu;
+static const struct device* d_strip;
+static struct led_rgb demo_strip[NUM_LEDS];
+static struct k_work_delayable demo_work;
+
+enum demo_neopixel_mode{
+    NONE,
+    SPIN, 
+    BLINK,
+    BOUNCE,
+};
+
+static enum demo_neopixel_mode current_mode = NONE;
+static uint8_t step;
 
 static struct k_poll_event events[2];
 
@@ -33,6 +53,7 @@ static void update_scroll(void);
 
 static struct menu main_menu;
 static struct menu commands_menu;
+static struct menu demo_menu;
 
 static void draw_row(uint8_t row, const char *str, bool invert)
 {
@@ -209,6 +230,7 @@ static void menu_handle_event(enum encoder_event evt)
             state.current = state.current->parent;
             state.selected = 0;
             state.scroll_offset = 0;
+            clear_display();
         }
         break;
     }
@@ -394,6 +416,153 @@ static void cmd_reboot(void)
     LOG_INF("MAVLink: Would send Reboot");
 }
 
+/* 
+ *  ------------------------------------------------------------------
+ *  
+ *      DEMO SECTION BEGIN
+ * 
+ *  ------------------------------------------------------------------ 
+*/
+
+static void demo_work_handle(struct k_work* work){
+    if(!d_strip){
+        return;
+    }
+
+    switch(current_mode){
+        case NONE:{
+            memset(demo_strip, 0, sizeof(demo_strip));
+            led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
+            return;
+        }
+        case BOUNCE:{
+            size_t period = 2 * (NUM_LEDS - 1 );
+            size_t pos = step % period;
+            if(pos >= NUM_LEDS)
+                pos = period - pos;
+            memset(demo_strip, 0, sizeof(demo_strip));
+            demo_strip[pos].r = 255;
+            break;
+        }
+        case SPIN:{
+            size_t prev = (step + NUM_LEDS - 1) % NUM_LEDS;
+            memset(demo_strip, 0, sizeof(demo_strip));
+            demo_strip[step % NUM_LEDS].r = 255;
+            demo_strip[prev].r = 255; //orange follows red
+            demo_strip[prev].g = 165;
+            break;
+        }
+        case BLINK:{
+            for(size_t i = 0; i < NUM_LEDS; i++){
+                uint8_t v = (step & 1) ? 128 : 0;
+                demo_strip[i].r = v;
+                demo_strip[i].g = v;
+                demo_strip[i].b = v;
+            }
+            break;
+        }
+        default: return;
+    }
+
+    led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
+    step++;
+    k_work_schedule(&demo_work, K_MSEC(120));
+}
+
+static void demo_init(void){
+    d_strip = DEVICE_DT_GET(STRIP_NODE);
+    if(device_is_ready(d_strip)){
+        memset(demo_strip, 0, sizeof(demo_strip));
+        led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
+        LOG_INF("Demo: LED strip ready");
+    }else{
+        LOG_WRN("Demo: LED strip not ready");
+        d_strip = NULL;
+    }
+    k_work_init_delayable(&demo_work, demo_work_handle);
+}
+
+bool menu_demo_active(void){
+    return current_mode != NONE;
+}
+
+static void demo_anim_stop(void)
+{
+    current_mode = NONE;
+    k_work_cancel_delayable(&demo_work);
+    if (d_strip) {
+        memset(demo_strip, 0, sizeof(demo_strip));
+        led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
+    }
+}
+
+
+static void demo_servos(void){
+    // TODO
+}
+
+static void neopixel_bounce(void){
+    demo_anim_stop();
+    current_mode = BOUNCE;
+    step = 0;
+    k_work_schedule(&demo_work, K_MSEC(10));
+}
+
+static void neopixel_spin(void){
+    demo_anim_stop();
+    current_mode = SPIN;
+    step = 0;
+    k_work_schedule(&demo_work, K_MSEC(10));
+}
+
+static void neopixel_blink(void){
+    demo_anim_stop();
+    current_mode = BLINK;
+    step = 0;
+    k_work_schedule(&demo_work, K_MSEC(10));
+}
+
+static void neopixel_off(void){
+    demo_anim_stop();
+    current_mode = NONE;
+    step = 0;
+    k_work_schedule(&demo_work, K_MSEC(10));
+} 
+
+static struct menu_item neopixel_items[] = {
+    {"Bounce", NULL, neopixel_bounce, NULL, false },
+    {"Spin", NULL, neopixel_spin, NULL, false},
+    {"Blink", NULL, neopixel_blink, NULL, false},
+    {"Demo OFF", NULL, neopixel_off, NULL, false},
+};
+
+static struct menu_item demo_items[] = {
+    {"Light LEDs", NULL, NULL, &demo_neopixels_menu, false},
+    {"Move Servos", NULL, demo_servos,  NULL, false},
+};
+
+static struct menu demo_menu = {
+    .title = "Demo",
+    .items = demo_items, 
+    .item_count = ARRAY_SIZE(demo_items),
+    .parent = &main_menu,
+};
+
+static struct menu demo_neopixels_menu = {
+    .title = "Neopixels LEDs",
+    .items = neopixel_items,
+    .item_count = ARRAY_SIZE(neopixel_items),
+    .parent = &demo_menu,
+};
+
+
+/* ---------------------------------------------------------------------
+ *
+ *      DEMO SECTION END
+ *
+ * ---------------------------------------------------------------------
+*/
+
 static struct menu_item commands_items[] = {
     {"Arm/Disarm", NULL, cmd_arm_disarm, NULL, true},
     {"Request Telemetry", NULL, cmd_request_telemetry, NULL, false},
@@ -401,11 +570,13 @@ static struct menu_item commands_items[] = {
     {"Reboot", NULL, cmd_reboot, NULL, true},
 };
 
+
 static struct menu_item main_items[] = {
     {"COMMS",    draw_comms_screen,  NULL, NULL, false},
     {"GPS",      draw_gps_screen,    NULL, NULL, false},
     {"Status",   draw_status_screen, NULL, NULL, false},
     {"Commands", NULL,               NULL, &commands_menu, false},
+    {"Demo", NULL, NULL, &demo_menu, false},
 };
 
 static struct menu main_menu = {
@@ -422,6 +593,7 @@ static struct menu commands_menu = {
     .parent = &main_menu,
 };
 
+
 static void display_init(void)
 {
     disp = DEVICE_DT_GET(DT_NODELABEL(ssd1309));
@@ -429,6 +601,8 @@ static void display_init(void)
         LOG_ERR("Display not ready");
         return;
     }
+
+
 
     if (display_set_pixel_format(disp, PIXEL_FORMAT_MONO10) != 0) {
         display_set_pixel_format(disp, PIXEL_FORMAT_MONO01);
@@ -446,6 +620,7 @@ int menu_init(void)
     encoder_input_init();
 
     display_init();
+    demo_init();
 
     state.current = &main_menu;
     state.selected = 0;

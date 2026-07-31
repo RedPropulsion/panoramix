@@ -86,4 +86,6 @@ void menu_update_gps(bool valid, uint8_t sats, uint8_t fix, int32_t lat, int32_t
 
 void menu_update_asterics(const char *mode, uint16_t battery_mv, bool armed, uint8_t state);
 
+bool menu_demo_active(void);
+
 #endif /* MENU_H */
