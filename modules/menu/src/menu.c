@@ -7,7 +7,7 @@ LOG_MODULE_REGISTER(menu, LOG_LEVEL_INF);
 #include <zephyr/drivers/display.h>
 #include <zephyr/display/cfb.h>
 #include <zephyr/drivers/led_strip.h>
-//#include <zephyr/drivers/servo.h>
+#include <zephyr/drivers/servo.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,7 +31,35 @@ static uint32_t last_redraw = 0;
 static struct menu demo_neopixels_menu;
 static const struct device* d_strip;
 static struct led_rgb demo_strip[NUM_LEDS];
-static struct k_work_delayable demo_work;
+static struct k_work_delayable demo_neopixel_work;
+
+static struct menu demo_servo_menu;
+static const struct device* d_pitch_servo;
+static const struct device* d_yaw_servo;
+static struct k_work_delayable demo_servo_work;
+static int32_t yaw_angle, pitch_angle;
+static int8_t yaw_dir = 1, pitch_dir = 1;
+static uint8_t servo_step;
+
+enum demo_servo_mode {
+    SERVO_NONE,
+    SERVO_WIGGLE,
+    SERVO_SWEEP,
+    SERVO_HELLO,
+};
+
+static enum demo_servo_mode servo_mode = SERVO_NONE;
+
+// Servo demo tuning
+#define SERVO_ANGLE_MAX 90000    // 90 deg
+#define SERVO_SWEEP_STEP 5000    // 5 deg per sweep tick 
+#define SERVO_SWEEP_MS 200
+#define SERVO_WIGGLE_AMP 45000   // 45 deg wiggle amplitude 
+#define SERVO_WIGGLE_MS 300
+
+// rest position per axis (mdeg)
+#define SERVO_YAW_INIT 90000
+#define SERVO_PITCH_INIT 260000
 
 enum demo_neopixel_mode{
     NONE,
@@ -40,7 +68,7 @@ enum demo_neopixel_mode{
     BOUNCE,
 };
 
-static enum demo_neopixel_mode current_mode = NONE;
+static enum demo_neopixel_mode neopixel_mode = NONE;
 static uint8_t step;
 
 static struct k_poll_event events[2];
@@ -50,6 +78,7 @@ static void clear_display(void);
 static void menu_redraw(void);
 static void menu_handle_event(enum encoder_event evt);
 static void update_scroll(void);
+static void servo_go_home(void);
 
 static struct menu main_menu;
 static struct menu commands_menu;
@@ -409,12 +438,12 @@ static void cmd_request_telemetry(void)
 static void cmd_set_lora_channel(void)
 {
     LOG_INF("MAVLink: Would send Set LoRa Channel");
-}
+}    
 
 static void cmd_reboot(void)
 {
     LOG_INF("MAVLink: Would send Reboot");
-}
+}    
 
 /* 
  *  ------------------------------------------------------------------
@@ -422,28 +451,29 @@ static void cmd_reboot(void)
  *      DEMO SECTION BEGIN
  * 
  *  ------------------------------------------------------------------ 
-*/
+*/ 
 
-static void demo_work_handle(struct k_work* work){
+
+static void demo_neopixel_work_handle(struct k_work* work){
     if(!d_strip){
         return;
-    }
+    }    
 
-    switch(current_mode){
+    switch(neopixel_mode){
         case NONE:{
             memset(demo_strip, 0, sizeof(demo_strip));
             led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
             return;
-        }
+        }    
         case BOUNCE:{
             size_t period = 2 * (NUM_LEDS - 1 );
             size_t pos = step % period;
             if(pos >= NUM_LEDS)
                 pos = period - pos;
-            memset(demo_strip, 0, sizeof(demo_strip));
+            memset(demo_strip, 0, sizeof(demo_strip));    
             demo_strip[pos].r = 255;
             break;
-        }
+        }    
         case SPIN:{
             size_t prev = (step + NUM_LEDS - 1) % NUM_LEDS;
             memset(demo_strip, 0, sizeof(demo_strip));
@@ -451,22 +481,166 @@ static void demo_work_handle(struct k_work* work){
             demo_strip[prev].r = 255; //orange follows red
             demo_strip[prev].g = 165;
             break;
-        }
+        }    
         case BLINK:{
             for(size_t i = 0; i < NUM_LEDS; i++){
                 uint8_t v = (step & 1) ? 128 : 0;
                 demo_strip[i].r = v;
                 demo_strip[i].g = v;
                 demo_strip[i].b = v;
-            }
+            }    
             break;
-        }
+        }    
         default: return;
-    }
+    }    
 
     led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
     step++;
-    k_work_schedule(&demo_work, K_MSEC(120));
+    k_work_schedule(&demo_neopixel_work, K_MSEC(120));
+}    
+
+
+static void demo_neopixel_stop(void)
+{
+    neopixel_mode = NONE;
+    k_work_cancel_delayable(&demo_neopixel_work);
+    if (d_strip) {
+        memset(demo_strip, 0, sizeof(demo_strip));
+        led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
+    }
+}
+
+static void neopixel_bounce(void){
+    demo_neopixel_stop();
+    neopixel_mode = BOUNCE;
+    step = 0;
+    k_work_schedule(&demo_neopixel_work, K_MSEC(10));
+}
+
+static void neopixel_spin(void){
+    demo_neopixel_stop();
+    neopixel_mode = SPIN;
+    step = 0;
+    k_work_schedule(&demo_neopixel_work, K_MSEC(10));
+}
+
+static void neopixel_blink(void){
+    demo_neopixel_stop();
+    neopixel_mode = BLINK;
+    step = 0;
+    k_work_schedule(&demo_neopixel_work, K_MSEC(10));
+}
+
+static void neopixel_off(void){
+    demo_neopixel_stop();
+    neopixel_mode = NONE;
+    step = 0;
+    k_work_schedule(&demo_neopixel_work, K_MSEC(10));
+}
+
+static void demo_servo_work_handle(struct k_work *work)
+{
+    switch (servo_mode) {
+    case SERVO_WIGGLE: {
+        int32_t yaw_target =
+        (servo_step & 1) ? SERVO_YAW_INIT + SERVO_WIGGLE_AMP
+        : SERVO_YAW_INIT - SERVO_WIGGLE_AMP;
+        int32_t pitch_target =
+            (servo_step & 1) ? SERVO_PITCH_INIT + SERVO_WIGGLE_AMP
+                             : SERVO_PITCH_INIT - SERVO_WIGGLE_AMP;
+        if (d_yaw_servo) {
+            servo_set_position(d_yaw_servo, yaw_target);
+        }
+        if (d_pitch_servo) {
+            servo_set_position(d_pitch_servo, pitch_target);
+        }
+        servo_step++;
+        k_work_schedule(&demo_servo_work, K_MSEC(SERVO_WIGGLE_MS));
+        break;
+    }
+    case SERVO_SWEEP: {
+        yaw_angle += SERVO_SWEEP_STEP * yaw_dir;
+        if (yaw_angle <= SERVO_YAW_INIT) {
+            yaw_angle = SERVO_YAW_INIT;
+            yaw_dir = 1;
+        } else if (yaw_angle >= SERVO_YAW_INIT + SERVO_ANGLE_MAX) {
+            yaw_angle = SERVO_YAW_INIT + SERVO_ANGLE_MAX;
+            yaw_dir = -1;
+        }
+        pitch_angle += SERVO_SWEEP_STEP * pitch_dir;
+        if (pitch_angle <= SERVO_PITCH_INIT) {
+            pitch_angle = SERVO_PITCH_INIT;
+            pitch_dir = 1;
+        } else if (pitch_angle >= SERVO_PITCH_INIT + SERVO_ANGLE_MAX) {
+            pitch_angle = SERVO_PITCH_INIT + SERVO_ANGLE_MAX;
+            pitch_dir = -1;
+        }
+        if (d_yaw_servo) {
+            servo_set_position(d_yaw_servo, yaw_angle);
+        }
+        if (d_pitch_servo) {
+            servo_set_position(d_pitch_servo, pitch_angle);
+        }
+        k_work_schedule(&demo_servo_work, K_MSEC(SERVO_SWEEP_MS));
+        break;
+    }
+    case SERVO_HELLO: {
+        int32_t pitch_target = (servo_step & 1) ? SERVO_PITCH_INIT + SERVO_WIGGLE_AMP
+                                                : SERVO_PITCH_INIT - SERVO_WIGGLE_AMP;
+        if (d_pitch_servo)
+            servo_set_position(d_pitch_servo, pitch_target);
+        servo_step++;
+        k_work_schedule(&demo_servo_work, K_MSEC(SERVO_WIGGLE_MS));
+        break;
+    }
+    case SERVO_NONE:
+        servo_go_home();
+        break;
+    }
+}
+
+static void demo_servo_start()
+{
+    servo_step = 0;
+    yaw_angle = SERVO_YAW_INIT;
+    pitch_angle = SERVO_PITCH_INIT;
+    yaw_dir = 1;
+    pitch_dir = 1;
+    k_work_schedule(&demo_servo_work, K_MSEC(10));
+}
+
+static void servo_wiggle(void)
+{
+    servo_mode = SERVO_WIGGLE;
+    demo_servo_start();
+}
+
+static void servo_sweep(void)
+{
+    servo_mode = SERVO_SWEEP;
+    demo_servo_start();
+}
+
+static void servo_hello(void){
+    servo_mode = SERVO_HELLO;
+    demo_servo_start();
+}
+
+static void servo_go_home(void)
+{
+    if (d_yaw_servo) {
+        servo_set_position(d_yaw_servo, SERVO_YAW_INIT);
+    }
+    if (d_pitch_servo) {
+        servo_set_position(d_pitch_servo, SERVO_PITCH_INIT);
+    }
+}
+
+static void demo_servo_stop(void)
+{
+    servo_mode = SERVO_NONE;
+    k_work_cancel_delayable(&demo_servo_work);
+    servo_go_home();
 }
 
 static void demo_init(void){
@@ -479,66 +653,53 @@ static void demo_init(void){
         LOG_WRN("Demo: LED strip not ready");
         d_strip = NULL;
     }
-    k_work_init_delayable(&demo_work, demo_work_handle);
+    d_pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
+    d_yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
+    if(device_is_ready(d_pitch_servo)){
+        LOG_INF("Demo: Pitch servo ready");
+        servo_set_position(d_pitch_servo, SERVO_PITCH_INIT);
+    }else{
+        LOG_WRN("Demo: Pitch servo not read");
+        d_pitch_servo = NULL;
+    }
+    if(device_is_ready(d_yaw_servo)){
+        LOG_INF("Demo: Yaw servo ready");
+        servo_set_position(d_yaw_servo, SERVO_YAW_INIT);
+    }else{
+        LOG_WRN("Demo: Yaw servo not read");
+        d_yaw_servo = NULL;
+    }
+    k_work_init_delayable(&demo_neopixel_work, demo_neopixel_work_handle);
+    k_work_init_delayable(&demo_servo_work, demo_servo_work_handle);
 }
 
 bool menu_demo_active(void){
-    return current_mode != NONE;
+    return neopixel_mode != NONE;
 }
 
-static void demo_anim_stop(void)
-{
-    current_mode = NONE;
-    k_work_cancel_delayable(&demo_work);
-    if (d_strip) {
-        memset(demo_strip, 0, sizeof(demo_strip));
-        led_strip_update_rgb(d_strip, demo_strip, NUM_LEDS);
-    }
+static void demo_off(void){
+    demo_servo_stop();
+    demo_neopixel_stop();
 }
-
-
-static void demo_servos(void){
-    // TODO
-}
-
-static void neopixel_bounce(void){
-    demo_anim_stop();
-    current_mode = BOUNCE;
-    step = 0;
-    k_work_schedule(&demo_work, K_MSEC(10));
-}
-
-static void neopixel_spin(void){
-    demo_anim_stop();
-    current_mode = SPIN;
-    step = 0;
-    k_work_schedule(&demo_work, K_MSEC(10));
-}
-
-static void neopixel_blink(void){
-    demo_anim_stop();
-    current_mode = BLINK;
-    step = 0;
-    k_work_schedule(&demo_work, K_MSEC(10));
-}
-
-static void neopixel_off(void){
-    demo_anim_stop();
-    current_mode = NONE;
-    step = 0;
-    k_work_schedule(&demo_work, K_MSEC(10));
-} 
 
 static struct menu_item neopixel_items[] = {
     {"Bounce", NULL, neopixel_bounce, NULL, false },
     {"Spin", NULL, neopixel_spin, NULL, false},
     {"Blink", NULL, neopixel_blink, NULL, false},
-    {"Demo OFF", NULL, neopixel_off, NULL, false},
+    {"Neopixel OFF", NULL, neopixel_off, NULL, false},
+};
+
+static struct menu_item servo_items[] = {
+    {"Wiggle", NULL, servo_wiggle, NULL, false},
+    {"Sweep", NULL, servo_sweep, NULL, false},
+    {"Hello!", NULL, servo_hello, NULL, false},
+    {"Servo OFF", NULL, demo_servo_stop, NULL, false},
 };
 
 static struct menu_item demo_items[] = {
     {"Light LEDs", NULL, NULL, &demo_neopixels_menu, false},
-    {"Move Servos", NULL, demo_servos,  NULL, false},
+    {"Move Servos", NULL, NULL, &demo_servo_menu, false},
+    {"Demo OFF", NULL, demo_off, NULL, false},
 };
 
 static struct menu demo_menu = {
@@ -552,6 +713,13 @@ static struct menu demo_neopixels_menu = {
     .title = "Neopixels LEDs",
     .items = neopixel_items,
     .item_count = ARRAY_SIZE(neopixel_items),
+    .parent = &demo_menu,
+};
+
+static struct menu demo_servo_menu = {
+    .title = "Servos ST3215",
+    .items = servo_items,
+    .item_count = ARRAY_SIZE(servo_items),
     .parent = &demo_menu,
 };
 

@@ -19,6 +19,11 @@
 #include <cfb_font_templeos.h>
 #include <zephyr/drivers/i2c.h>
 #include "file_logger.h"
+#include <stdint.h>
+#include <zephyr/drivers/servo.h>
+#include <zephyr/drivers/uart.h>
+
+
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
@@ -62,6 +67,12 @@ static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
     GPIO_DT_SPEC_GET(DT_NODELABEL(neopixel_en), gpios);
 
+/* ------------------------------------------------------------------ *
+ * Servo
+ * ------------------------------------------------------------------ */
+
+ const struct device *yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
+ const struct device *pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
 
 /* ------------------------------------------------------------------ *
  * Buzzer
@@ -147,7 +158,72 @@ int main(void)
      LOG_INF("Starting main()");
     int ret;
 
-    
+    int32_t angle_mdeg = 0;
+
+    k_sleep(K_MSEC(500));
+
+    LOG_INF("YAW - PING");
+    ret = servo_ping(yaw_servo);
+    LOG_INF("yaw ping ret=%d", ret);
+
+    k_sleep(K_MSEC(200));
+
+    LOG_INF("PITCH - PING");
+    ret = servo_ping(pitch_servo);
+    LOG_INF("pitch ping ret=%d", ret);
+
+    k_sleep(K_MSEC(200));
+
+    LOG_INF("YAW - SET - 0");
+    ret = servo_set_position(yaw_servo, 0);
+    LOG_INF("yaw set ret=%d", ret);
+
+    k_msleep(50);
+
+    LOG_INF("YAW - GET");
+    ret = servo_get_position(yaw_servo, &angle_mdeg);
+    LOG_INF("yaw get ret=%d pos=%d mdeg", ret, angle_mdeg);
+
+    k_sleep(K_MSEC(500));
+
+    LOG_INF("PITCH - SET - 210");
+    ret = servo_set_position(pitch_servo, 210 * 1000);
+    LOG_INF("pitch set ret=%d", ret);
+
+    k_msleep(50);
+
+    LOG_INF("PITCH - GET");
+    ret = servo_get_position(pitch_servo, &angle_mdeg);
+    LOG_INF("pitch get ret=%d pos=%d mdeg", ret, angle_mdeg);
+
+    k_sleep(K_MSEC(500));
+
+    LOG_INF("YAW - SET - 90");
+    ret = servo_set_position(yaw_servo, 90 * 1000);
+    LOG_INF("yaw set ret=%d", ret);
+
+    k_msleep(50);
+
+    LOG_INF("YAW - GET");
+    ret = servo_get_position(yaw_servo, &angle_mdeg);
+    LOG_INF("yaw get ret=%d pos=%d mdeg", ret, angle_mdeg);
+
+    uint8_t pitch_status = 0;
+    LOG_INF("PITCH - GET - STATUS");
+    ret = servo_get_status(pitch_servo, &pitch_status);
+    LOG_INF("pitch status ret=%d status=0x%02X", ret, pitch_status);
+
+    k_msleep(500);
+
+    LOG_INF("PITCH - SET - 260");
+    ret = servo_set_position(pitch_servo, 260 * 1000);
+    LOG_INF("pitch set ret=%d", ret);
+
+    k_msleep(50);
+
+    LOG_INF("PITCH - GET");
+    ret = servo_get_position(pitch_servo, &angle_mdeg);
+    LOG_INF("pitch get ret=%d pos=%d mdeg", ret, angle_mdeg);
     
 
     if (!device_is_ready(i2c_dev)) {
