@@ -63,42 +63,6 @@
         };
     };
 
-    // led_strip_1: ws2812_1 {
-    //     compatible = "worldsemi,ws2812-gpio";
-
-    //     chain-length = <24>;
-    //     color-mapping = <LED_COLOR_ID_GREEN
-    //                     LED_COLOR_ID_RED
-    //                     LED_COLOR_ID_BLUE>;
-    //     gpios = <&gpiob 8 GPIO_ACTIVE_HIGH>;
-
-    // parametri di default per WS2812. Se necessario, modificarli
-    //     delay-t1h = <700>;
-    //     delay-t1l = <600>;
-    //     delay-t0h = <350>;
-    //     delay-t0l = <800>;
-    //     reset-delay = <8000>;
-
-    //      sarebbe intelligente inserire la configurazione del pin di enable/abilitazione del regolatore corrispondente
-    // };
-
-    // led_strip: ws2812_2 {
-    //     compatible = "worldsemi,ws2812-uart";
-
-    //     chain-length = <12>;
-    //     color-mapping = <LED_COLOR_ID_GREEN
-    //                     LED_COLOR_ID_RED
-    //                     LED_COLOR_ID_BLUE>;
-    //     gpios = <&gpiob 9 GPIO_ACTIVE_HIGH>;
-
-    //     delay-t1h = <700>;
-    //     delay-t1l = <600>;
-    //     delay-t0h = <350>;
-    //     delay-t0l = <800>;
-    //     reset-delay = <8000>;
-
-    // };
-
     pwm_devices {
         buzzer_pwm: buzzer_pwm {
             compatible = "pwm";
@@ -149,8 +113,8 @@
 
             startup-delay-us = <200>; /* Tempo di assestamento prima che sia pronto */
 
-            //regulator-boot-on;
-            regulator-boot-off;
+            regulator-boot-on;
+            //regulator-boot-off;
         };
 
         pyro_vdd: regulator_pyro_vdd {
@@ -312,6 +276,14 @@
     pinctrl-names = "default";
 
     //TODO: clocks = <&rcc STM32_CLOCK(APB4,
+
+    // I2C4 ha a disposizione il BDMA, che può raggiungere locazioni di RAM solo nel dominio SRAM4
+    // Vedi Table 2 dell'RM0468
+
+    // i2c4_rx
+    dmas = <&dmamux2 0 13 (STM32_DMA_PERIPH_RX | STM32_DMA_PERIPH_NO_INC | STM32_DMA_PERIPH_8BITS | STM32_DMA_OFFSET_LINKED_BUS | STM32_DMA_PRIORITY_MEDIUM)>;
+    // i2c4_tx
+    dmas = <&dmamux2 1 14 (STM32_DMA_PERIPH_TX | STM32_DMA_PERIPH_NO_INC | STM32_DMA_PERIPH_8BITS | STM32_DMA_OFFSET_LINKED_BUS | STM32_DMA_PRIORITY_MEDIUM)>;
 
     // I2C4 ha a disposizione il BDMA, che può raggiungere locazioni di RAM solo nel dominio SRAM4
     // Vedi Table 2 dell'RM0468
@@ -832,9 +804,10 @@
 
 &uart4 {
     status = "okay";
-    pinctrl-0 = <&uart4_tx_pb9 &uart4_rx_pb8>;
+    pinctrl-0 = <&uart4_ws2812_mcu &uart4_ws2812_ring>;
     pinctrl-names = "default";
 
+    reg = <0x40004C00 DT_SIZE_K(1024)>;
 
     current-speed = <2400000>; /* 2.5 MHz baudrate */
        /* Frame constraint: (1 start + 7 data + 1 stop) = 9 bits total. */
@@ -851,7 +824,7 @@
     led_strip: ws2812-strip {
         compatible = "worldsemi,ws2812-uart";
         status = "okay";
-        chain-length = <12>;
+        chain-length = <50>;
 
         bits-per-symbol = <3>;
 
@@ -874,12 +847,18 @@
 };
 
 &pinctrl {
-    /* Creiamo un pin custom per la UART4 specifico per i Neopixel */
-    uart4_tx_ws2812: uart4_tx_ws2812 {
-        pinmux = <STM32_PINMUX('B', 9, AF8)>; /* AF8 è lo standard per UART4_TX su PB9 */
+    uart4_ws2812_mcu: uart4_tx_ws2812 {
+        pinmux = <STM32_PINMUX('B', 9, AF8)>;
         bias-disable;
         drive-push-pull;
-        slew-rate = "very-high-speed"; /* QUESTA è la magia che salva il segnale elettrico */
+        slew-rate = "very-high-speed";
+    };
+
+    uart4_ws2812_ring: uart4_rx_ws2812 {
+        pinmux = <STM32_PINMUX('B', 8, AF8)>;
+        bias-disable;
+        drive-push-pull;
+        slew-rate = "very-high-speed";
     };
 };
 
