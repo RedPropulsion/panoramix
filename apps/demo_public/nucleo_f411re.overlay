@@ -1,0 +1,26 @@
+#include <zephyr/dt-bindings/led/led.h>
+
+/ {
+
+};
+
+/* See: https://github.com/zephyrproject-rtos/zephyr/blob/8445f9958c756bc91931882c07e174e9650e55c9/samples/drivers/led/led_strip/boards/nucleo_l476rg.overlay#L13-L25 */
+&spi1 {
+    status = "okay";
+
+    led_strip: ws2812_strip@0 {
+        status = "okay";
+        compatible = "worldsemi,ws2812-spi";
+
+        reg = <0>;
+        spi-max-frequency = <4000000>;
+        frame-format = <32768>;
+
+        chain-length = <47>;
+        spi-one-frame = <0x70>;
+        spi-zero-frame = <0x40>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+    };
+};

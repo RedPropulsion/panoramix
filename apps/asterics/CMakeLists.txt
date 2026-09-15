@@ -5,4 +5,4 @@ set(BOARD asterics)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(AsterICS)
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/main_led_gem.c)
