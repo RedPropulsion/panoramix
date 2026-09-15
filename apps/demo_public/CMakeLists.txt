@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.20.0)
 
+set(BOARD_FLASH_RUNNER openocd)
+set(BOARD_DEBUG_RUNNER openocd)
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(Demo)
