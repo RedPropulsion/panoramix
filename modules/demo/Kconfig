@@ -1,0 +1,21 @@
+config LIB_DEMO
+    bool "Demo peripherals control"
+    default n
+    depends on SERVO
+    depends on LED_STRIP
+    help
+        Neopixel LED and ST3215 servo demo animations, exposed through the menu and (optionally) MAVLink.
+if LIB_DEMO
+config LIB_DEMO_LOG_LEVEL
+    int "Demo module log level"
+    default 3
+    range 0 4
+    help
+        0=OFF, 1=ERROR, 2=WARNING, 3=INFO, 4=DEBUG
+config LIB_DEMO_MAVLINK
+    bool "Demo MAVLink command interface"
+    default n
+    depends on MAVWRAP
+    help
+        Handle custom OBELICS_DEMO_* MAVLink messages to trigger demos.
+endif # LIB_DEMO
