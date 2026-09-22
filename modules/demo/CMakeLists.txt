@@ -1,0 +1,6 @@
+if(CONFIG_LIB_DEMO)
+  zephyr_library()
+  zephyr_library_sources(src/demo.c)
+  zephyr_library_sources_ifdef(CONFIG_LIB_DEMO_MAVLINK src/demo_mavlink.c)
+  zephyr_include_directories(include)
+endif()
