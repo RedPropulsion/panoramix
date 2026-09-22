@@ -12,7 +12,6 @@
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/display/cfb.h>
 #include "sound.h"
-#include "udp_client.h"
 #include "gnss_u_blox_m10.h"
 #include "display.h"
 #include "menu.h"
@@ -61,7 +60,6 @@ static struct lora_modem_config lora_tx_config;
  * Neopixel
  * ------------------------------------------------------------------ */
 #define STRIP_NODE  DT_NODELABEL(led_strip)
-#define NUM_LEDS    DT_PROP(STRIP_NODE, chain_length)
 
 static const struct device *strip = DEVICE_DT_GET(STRIP_NODE);
 static const struct gpio_dt_spec neopixel_en =
@@ -357,9 +355,7 @@ int main(void)
 
     display_update_row(3, "Buttons OK");
 
-    display_update_row(4, "UDP init");
-    udp_client_init();
-    display_update_row(5, "UDP Ok");
+    /* MAVLink UDP starts after demo_init(), below. */
 
 
     struct gps_position pos;
@@ -371,8 +367,6 @@ int main(void)
     }
 
 
-    struct led_rgb pixels[NUM_LEDS] = {0};
-    bool toggle = false;
     uint8_t tx_buf[] = "Hello from Demo!";
     
 
@@ -387,7 +381,25 @@ int main(void)
 
     menu_start();
 
-    demo_init();
+    ret = demo_init();
+    if (ret < 0) {
+        LOG_ERR("Demo init failed: %d", ret);
+        return ret;
+    }
+
+    /* Start the receiver only after the LED work items are initialized. */
+    const struct device *mav_dev =
+        DEVICE_DT_GET(DT_NODELABEL(mavlink_idefix));
+    if (!device_is_ready(mav_dev)) {
+        LOG_ERR("MAVLink device not ready");
+    } else {
+        ret = demo_mavlink_init(mav_dev);
+        if (ret < 0) {
+            LOG_ERR("MAVLink start failed: %d", ret);
+        } else {
+            LOG_INF("MAVLink UDP ready: 192.168.10.2:14550 -> 192.168.10.1:14551");
+        }
+    }
 
     int lora_counter = 0;
     int row=0;
@@ -404,26 +416,7 @@ int main(void)
             }
         }
 
-        memset(pixels, 0, sizeof(pixels));
-        if (toggle) {
-            pixels[0].r = 128;
-            pixels[3].r = 128;
-            pixels[3].b = 128;
-        } else {
-            pixels[1].b = 128;
-            pixels[2].g = 128;
-        }
-        toggle = !toggle;
-
-        #if defined(CONFIG_LIB_DEMO)
-            if (!demo_active()) {
-                led_strip_update_rgb(strip, pixels, NUM_LEDS);
-            }
-        #else
-            led_strip_update_rgb(strip, pixels, NUM_LEDS);
-        #endif
-
-        
+        /* The demo module exclusively controls the LED strip, including OFF. */
 
         int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
         if (err == -EAGAIN) {

@@ -12,6 +12,19 @@ LOG_MODULE_DECLARE(demo, CONFIG_LIB_DEMO_LOG_LEVEL);
 #define OBELICS_MAV_SYSTEM_ID     1U
 #define OBELICS_MAV_COMPONENT_ID  1U
 
+/* COMMAND_LONG/COMMAND_ACK use common wire formats.
+ * Keep application command IDs aligned with idefix_mavlink.py. */
+enum demo_command_id {
+    DEMO_CMD_LED_OFF = 60000,
+    DEMO_CMD_LED_BOUNCE = 60001,
+    DEMO_CMD_LED_SPIN = 60002,
+    DEMO_CMD_LED_BLINK = 60003,
+    DEMO_CMD_SERVO_OFF = 60010,
+    DEMO_CMD_SERVO_WIGGLE = 60011,
+    DEMO_CMD_SERVO_SWEEP = 60012,
+    DEMO_CMD_SERVO_HELLO = 60013,
+};
+
 static void demo_send_command_ack(
     const struct device *dev,
     const mavlink_message_t *request,
@@ -73,35 +86,35 @@ static void demo_mavlink_rx_cb(
     uint8_t result = MAV_RESULT_ACCEPTED;
 
     switch (cmd.command) {
-    case MAV_CMD_OBELICS_LED_OFF:
+    case DEMO_CMD_LED_OFF:
         demo_neopixel_stop();
         break;
 
-    case MAV_CMD_OBELICS_LED_BOUNCE:
+    case DEMO_CMD_LED_BOUNCE:
         demo_neopixel_start(DEMO_NEOPIXEL_BOUNCE);
         break;
 
-    case MAV_CMD_OBELICS_LED_SPIN:
+    case DEMO_CMD_LED_SPIN:
         demo_neopixel_start(DEMO_NEOPIXEL_SPIN);
         break;
 
-    case MAV_CMD_OBELICS_LED_BLINK:
+    case DEMO_CMD_LED_BLINK:
         demo_neopixel_start(DEMO_NEOPIXEL_BLINK);
         break;
 
-    case MAV_CMD_OBELICS_SERVO_OFF:
+    case DEMO_CMD_SERVO_OFF:
         //demo_servo_stop();
         break;
 
-    case MAV_CMD_OBELICS_SERVO_WIGGLE:
+    case DEMO_CMD_SERVO_WIGGLE:
         //demo_servo_start(DEMO_SERVO_WIGGLE);
         break;
 
-    case MAV_CMD_OBELICS_SERVO_SWEEP:
+    case DEMO_CMD_SERVO_SWEEP:
         //demo_servo_start(DEMO_SERVO_SWEEP);
         break;
 
-    case MAV_CMD_OBELICS_SERVO_HELLO:
+    case DEMO_CMD_SERVO_HELLO:
         //demo_servo_start(DEMO_SERVO_HELLO);
         break;
 

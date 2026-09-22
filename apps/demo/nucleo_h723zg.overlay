@@ -6,6 +6,18 @@
 
 
 / {
+    mavlink_idefix: mavlink-idefix {
+        compatible = "mavlink-wrapper";
+        status = "okay";
+        transport = <&mac>;
+        net-interface;
+        net-type = "udp";
+        local-ip = "192.168.10.2";
+        local-port = <14550>;
+        remote-ip = "192.168.10.1";
+        remote-port = <14551>;
+    };
+
     chosen {
         zephyr,display = &ssd1309;
     };
