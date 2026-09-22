@@ -25,6 +25,11 @@ add_custom_command(
 add_custom_target(generate_cfb_font DEPENDS ${gen_dir}/cfb_font_templeos.h)
 add_dependencies(app generate_cfb_font)
 # ============ KEY FIX: Add include path for generated headers ============
+set(
+    OBELICS_MAVLINK_INCLUDE_DIR
+    ${CMAKE_CURRENT_SOURCE_DIR}/mavlink/generated/c
+)
+zephyr_system_include_directories(${OBELICS_MAVLINK_INCLUDE_DIR})
 target_include_directories(app PRIVATE ${gen_dir})
 target_sources(app PRIVATE
     src/main.c

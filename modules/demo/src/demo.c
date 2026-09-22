@@ -12,16 +12,18 @@ LOG_MODULE_REGISTER(demo, CONFIG_LIB_DEMO_LOG_LEVEL);
 #define STRIP_NODE DT_NODELABEL(led_strip)
 #define NUM_LEDS   DT_PROP(STRIP_NODE, chain_length)
 
-/* Servo demo tuning */
-#define SERVO_ANGLE_MAX     90000   /* 90 deg */
-#define SERVO_SWEEP_STEP    5000    /* 5 deg per sweep tick */
+
+// Servo demo tuning
+/*
+#define SERVO_ANGLE_MAX     90000   // 90 deg 
+#define SERVO_SWEEP_STEP    5000    // 5 deg per sweep tick 
 #define SERVO_SWEEP_MS      200
-#define SERVO_WIGGLE_AMP    45000   /* 45 deg wiggle amplitude */
+#define SERVO_WIGGLE_AMP    45000   // 45 deg wiggle amplitude 
 #define SERVO_WIGGLE_MS     300
 
-/* Rest positions */
+// Rest positions
 #define SERVO_YAW_INIT      90000
-#define SERVO_PITCH_INIT    260000
+#define SERVO_PITCH_INIT    260000 */
 
 
 static const struct device *d_strip;
@@ -30,7 +32,7 @@ static struct k_work_delayable demo_neopixel_work;
 static atomic_t neopixel_mode = ATOMIC_INIT(DEMO_NEOPIXEL_OFF);
 static uint8_t step;
 
-
+/*
 static const struct device *d_pitch_servo;
 static const struct device *d_yaw_servo;
 static struct k_work_delayable demo_servo_work;
@@ -40,6 +42,8 @@ static uint8_t servo_step;
 static atomic_t servo_mode = ATOMIC_INIT(DEMO_SERVO_OFF);
 
 static void servo_go_home(void);
+*/
+
 
 static void demo_neopixel_work_handle(struct k_work *work)
 {
@@ -104,6 +108,7 @@ void demo_neopixel_start(enum demo_neopixel_mode mode)
     k_work_schedule(&demo_neopixel_work, K_MSEC(10));
 }
 
+/* 
 static void demo_servo_work_handle(struct k_work *work)
 {
     switch ((enum demo_servo_mode)atomic_get(&servo_mode)) {
@@ -191,17 +196,19 @@ void demo_servo_stop(void)
     k_work_cancel_delayable(&demo_servo_work);
     servo_go_home();
 }
+    
+*/
 
 void demo_off(void)
 {
-    demo_servo_stop();
+    //demo_servo_stop();
     demo_neopixel_stop();
 }
 
 bool demo_active(void)
 {
-    return (atomic_get(&neopixel_mode) != DEMO_NEOPIXEL_OFF) ||
-           (atomic_get(&servo_mode) != DEMO_SERVO_OFF);
+    //return (atomic_get(&neopixel_mode) != DEMO_NEOPIXEL_OFF) || (atomic_get(&servo_mode) != DEMO_SERVO_OFF);
+    return atomic_get(&neopixel_mode) != DEMO_NEOPIXEL_OFF;
 }
 
 int demo_init(void)
@@ -215,6 +222,8 @@ int demo_init(void)
         LOG_WRN("Demo: LED strip not ready");
         d_strip = NULL;
     }
+    /*
+    
     d_pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
     d_yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
     if (device_is_ready(d_pitch_servo)) {
@@ -231,8 +240,10 @@ int demo_init(void)
         LOG_WRN("Demo: Yaw servo not ready");
         d_yaw_servo = NULL;
     }
+    
+    */
     k_work_init_delayable(&demo_neopixel_work, demo_neopixel_work_handle);
-    k_work_init_delayable(&demo_servo_work, demo_servo_work_handle);
+    //k_work_init_delayable(&demo_servo_work, demo_servo_work_handle);
 #if defined(CONFIG_LIB_MENU)
     demo_menu.parent = menu_get_main();
 #endif
@@ -243,36 +254,45 @@ int demo_init(void)
 static void menu_neopixel_bounce(void) { demo_neopixel_start(DEMO_NEOPIXEL_BOUNCE); }
 static void menu_neopixel_spin(void)   { demo_neopixel_start(DEMO_NEOPIXEL_SPIN); }
 static void menu_neopixel_blink(void)  { demo_neopixel_start(DEMO_NEOPIXEL_BLINK); }
-static void menu_servo_wiggle(void)    { demo_servo_start(DEMO_SERVO_WIGGLE); }
-static void menu_servo_sweep(void)     { demo_servo_start(DEMO_SERVO_SWEEP); }
-static void menu_servo_hello(void)     { demo_servo_start(DEMO_SERVO_HELLO); }
+//static void menu_servo_wiggle(void)    { demo_servo_start(DEMO_SERVO_WIGGLE); }
+//static void menu_servo_sweep(void)     { demo_servo_start(DEMO_SERVO_SWEEP); }
+//static void menu_servo_hello(void)     { demo_servo_start(DEMO_SERVO_HELLO); }
+
 static struct menu_item neopixel_items[] = {
     {"Bounce",       NULL, menu_neopixel_bounce, NULL, false},
     {"Spin",         NULL, menu_neopixel_spin,   NULL, false},
     {"Blink",        NULL, menu_neopixel_blink,  NULL, false},
     {"Neopixel OFF", NULL, demo_neopixel_stop,   NULL, false},
 };
+
+/*
 static struct menu_item servo_items[] = {
     {"Wiggle",    NULL, menu_servo_wiggle, NULL, false},
     {"Sweep",     NULL, menu_servo_sweep,  NULL, false},
     {"Hello!",    NULL, menu_servo_hello,  NULL, false},
     {"Servo OFF", NULL, demo_servo_stop,   NULL, false},
 };
+*/
+
 static struct menu demo_neopixels_menu = {
     .title = "Neopixels LEDs",
     .items = neopixel_items,
     .item_count = ARRAY_SIZE(neopixel_items),
     .parent = &demo_menu,
 };
+
+/*
 static struct menu demo_servo_menu = {
     .title = "Servos ST3215",
     .items = servo_items,
     .item_count = ARRAY_SIZE(servo_items),
     .parent = &demo_menu,
 };
+*/
+
 static struct menu_item demo_items[] = {
     {"Light LEDs",  NULL, NULL, &demo_neopixels_menu, false},
-    {"Move Servos", NULL, NULL, &demo_servo_menu,     false},
+    //{"Move Servos", NULL, NULL, &demo_servo_menu,     false},
     {"Demo OFF",    NULL, demo_off, NULL, false},
 };
 struct menu demo_menu = {

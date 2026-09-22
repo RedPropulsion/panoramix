@@ -37,7 +37,6 @@ static void clear_display(void);
 static void menu_redraw(void);
 static void menu_handle_event(enum encoder_event evt);
 static void update_scroll(void);
-static void servo_go_home(void);
 
 static struct menu main_menu;
 static struct menu commands_menu;
