@@ -20,6 +20,8 @@
 #include <zephyr/drivers/i2c.h>
 #include "file_logger.h"
 #include <stdint.h>
+#include <errno.h>
+#include <string.h>
 #include <zephyr/drivers/servo.h>
 #include <zephyr/drivers/uart.h>
 #include "demo.h"
@@ -55,7 +57,84 @@ static void init_storage(void)
  * ------------------------------------------------------------------ */
 #define LORA_NODE DT_NODELABEL(lora_sx1261)
 static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
-static struct lora_modem_config lora_tx_config;
+static struct lora_modem_config lora_cfg = {
+    .frequency = 868000000,
+    .bandwidth = BW_250_KHZ,
+    .datarate = SF_8,
+    .coding_rate = CR_4_5,
+    .preamble_len = 12,
+    .tx_power = 14,
+    .tx = true,
+    .iq_inverted = false,
+    .public_network = false,
+    .packet_crc_disable = false,
+};
+
+/* First radio test: ObelICS sends four bytes PING, peer replies PONG. */
+static void lora_test_once(void)
+{
+    static uint32_t tx_count;
+    static uint32_t rx_count;
+    static int16_t last_rssi;
+    static int8_t last_snr;
+    uint8_t tx_buf[] = "PING";
+    uint8_t rx_buf[256];
+    int16_t rssi;
+    int8_t snr;
+    int ret;
+
+    lora_cfg.tx = true;
+    ret = lora_config(lora_dev, &lora_cfg);
+    if (ret < 0) {
+        LOG_ERR("LoRa TX config failed: %d", ret);
+        goto update_stats;
+    }
+
+    /* Do not send the terminating NUL byte. */
+    ret = lora_send(lora_dev, tx_buf, sizeof(tx_buf) - 1);
+    if (ret < 0) {
+        LOG_ERR("LoRa TX failed: %d", ret);
+        goto update_stats;
+    }
+    tx_count++;
+
+    /* Switch immediately to RX, before display updates or other work. */
+    lora_cfg.tx = false;
+    ret = lora_config(lora_dev, &lora_cfg);
+    if (ret < 0) {
+        LOG_ERR("LoRa RX config failed: %d", ret);
+        goto update_stats;
+    }
+
+    /* The API accepts at most 255 bytes; reserve one more for NUL. */
+    ret = lora_recv(lora_dev, rx_buf, sizeof(rx_buf) - 1,
+                    K_SECONDS(2), &rssi, &snr);
+    LOG_INF("LoRa TX #%u: PING", (unsigned int)tx_count);
+
+    if (ret == -EAGAIN || ret == -ETIMEDOUT) {
+        LOG_INF("LoRa RX timeout: no reply");
+    } else if (ret < 0) {
+        LOG_ERR("LoRa RX failed: %d", ret);
+    } else {
+        rx_count++;
+        last_rssi = rssi;
+        last_snr = snr;
+        rx_buf[ret] = '\0';
+        LOG_INF("LoRa RX #%u: %d bytes: %s",
+                (unsigned int)rx_count, ret, (char *)rx_buf);
+        LOG_INF("RSSI: %d dBm, SNR: %d dB", (int)rssi, (int)snr);
+        if (ret == 4 && memcmp(rx_buf, "PONG", 4) == 0) {
+            LOG_INF("LoRa PING/PONG OK");
+        } else {
+            LOG_WRN("LoRa packet received, but expected four bytes PONG");
+        }
+    }
+
+update_stats:
+    /* RX counts valid packets, not bytes. Keep last metrics on timeout. */
+    menu_update_lora_stats(tx_count, rx_count, last_rssi, last_snr);
+}
+
 /* The Ethernet peer may power up after ObelICS. Only start once it is ready.
  * Called from main after demo_init(), never from the LED/radio workqueue.
  */
@@ -114,8 +193,10 @@ static const struct gpio_dt_spec neopixel_en =
  * Servo
  * ------------------------------------------------------------------ */
 
+#if 0 /* Servo devices disabled for the LED/LoRa demo. */
  const struct device *yaw_servo = DEVICE_DT_GET(DT_NODELABEL(yaw_servo));
  const struct device *pitch_servo = DEVICE_DT_GET(DT_NODELABEL(pitch_servo));
+#endif
 
 /* ------------------------------------------------------------------ *
  * Buzzer
@@ -329,32 +410,22 @@ int main(void)
     file_logger_open("/SD:/packets.log", FS_O_CREATE | FS_O_READ | FS_O_WRITE | FS_O_APPEND, &log_file);
     #endif
 
-    /* Initialize LoRa device */
+    /* A ready device is not yet proof of a working radio link. */
+    bool lora_ok = false;
     if (!device_is_ready(lora_dev)) {
         LOG_ERR("LoRa device not ready");
+        display_update_row(1, "LoRa not ready");
     } else {
-        lora_tx_config.frequency = 868000000;
-        lora_tx_config.bandwidth = BW_250_KHZ;
-        lora_tx_config.datarate = SF_8;
-        lora_tx_config.coding_rate = CR_4_5;
-        lora_tx_config.preamble_len = 12;
-        lora_tx_config.tx_power = 14;
-        lora_tx_config.tx = true;
-        lora_tx_config.iq_inverted = false;
-        lora_tx_config.public_network = false;
-
-        ret = lora_config(lora_dev, &lora_tx_config);
+        ret = lora_config(lora_dev, &lora_cfg);
         if (ret < 0) {
             LOG_ERR("LoRa config failed: %d", ret);
+            display_update_row(1, "LoRa cfg error");
         } else {
-            LOG_INF("LoRa initialized: 868 MHz, SF8, 14 dBm");
+            lora_ok = true;
+            LOG_INF("LoRa configured: 868 MHz, BW250, SF8, CR4/5");
+            display_update_row(1, "LoRa configured");
         }
-    }    
-    char buf[255] = {0};
-    int16_t RSSI;
-    int8_t SNR;
-
-    display_update_row(1,"LoRa ok");
+    }
 
     /* Neopixel enable */
     gpio_pin_configure_dt(&neopixel_en, GPIO_OUTPUT_ACTIVE);
@@ -415,7 +486,7 @@ int main(void)
     }
 
 
-    uint8_t tx_buf[] = "Hello from Demo!";
+
     
 
     LOG_INF("Starting main loop...");
@@ -436,23 +507,16 @@ int main(void)
     }
 
     while (1) {
+        int64_t cycle_start = k_uptime_get();
 
-        // display_string("Running main loop...");
-        /* LoRa TX every 5 seconds */
-        if (device_is_ready(lora_dev)) {
-            int err = lora_send(lora_dev, tx_buf, sizeof(tx_buf));
-            if (err == 0) {
-                LOG_DBG("LoRa TX #%d: %d bytes", lora_counter++, (int)sizeof(tx_buf));
-            } else {
-                LOG_ERR("LoRa TX failed: %d", err);
-            }
-        }
         /* demo_init() above must finish before enabling command callbacks. */
         mavlink_try_start();
 
+        if (lora_ok) {
+            lora_test_once();
         }
-        row = (row + 1) % 8; // cycle through display rows for updates
 
+        /* The demo module exclusively controls the LED strip, including OFF. */
 
         // LOG_DBG("GPS: %02d/%02d/%04d %02d:%02d:%02d.%03u | "
         //                             "lat=%d, lon=%d, alt=%dmm | "
@@ -478,7 +542,9 @@ int main(void)
         } else {
             // display_update_row(0, "GPS: No fix");
         }
-        // k_sleep(K_SECONDS(1));
+        /* Keep at least five seconds between test starts, including errors. */
+        int64_t remaining_ms = 5000 - (k_uptime_get() - cycle_start);
+        k_msleep(remaining_ms > 0 ? (int32_t)remaining_ms : 1);
     }
     return 0;
 }
