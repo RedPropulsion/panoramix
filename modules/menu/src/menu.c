@@ -309,25 +309,32 @@ void menu_update_asterics(const char *mode, uint16_t battery_mv, bool armed, uin
 
 static void draw_comms_screen(void)
 {
+    char buf[17];
+
     clear_display();
     draw_row(0, "COMMS", false);
-    draw_row(1, "", false);
+    draw_row(1, "LoRa", false);
 
-    char buf[17];
-    snprintf(buf, sizeof(buf), "LoRa TX:%u RX:%u",
-             (int32_t)atomic_get(&menu_data.lora.tx_count),
-             (int32_t)atomic_get(&menu_data.lora.rx_count));
+    snprintf(buf, sizeof(buf), "TX: %u",
+             (unsigned int)atomic_get(&menu_data.lora.tx_count));
     draw_row(2, buf, false);
 
-    snprintf(buf, sizeof(buf), "RSSI:%d SNR:%d",
-             (int32_t)atomic_get(&menu_data.lora.last_rssi),
-             (int32_t)atomic_get(&menu_data.lora.last_snr));
+    snprintf(buf, sizeof(buf), "RX: %u",
+             (unsigned int)atomic_get(&menu_data.lora.rx_count));
     draw_row(3, buf, false);
 
-    snprintf(buf, sizeof(buf), "UDP TX:%u RX:%u",
-             (int32_t)atomic_get(&menu_data.udp.tx_count),
-             (int32_t)atomic_get(&menu_data.udp.rx_count));
+    snprintf(buf, sizeof(buf), "RSSI:%d dBm",
+             (int)atomic_get(&menu_data.lora.last_rssi));
     draw_row(4, buf, false);
+
+    snprintf(buf, sizeof(buf), "SNR:%d dB",
+             (int)atomic_get(&menu_data.lora.last_snr));
+    draw_row(5, buf, false);
+
+    snprintf(buf, sizeof(buf), "UDP TX:%u RX:%u",
+             (unsigned int)atomic_get(&menu_data.udp.tx_count),
+             (unsigned int)atomic_get(&menu_data.udp.rx_count));
+    draw_row(6, buf, false);
 
     cfb_framebuffer_finalize(disp);
 }

@@ -148,13 +148,13 @@
     dma-names = "tx", "rx"; 
     
     yaw_servo: yaw_servo {
-        status = "okay";
+        status = "disabled";
         compatible = "waveshare,st3215";
         servo-id = <1>;
     };
 
     pitch_servo: pitch_servo {
-        status = "okay";
+        status = "disabled";
         compatible = "waveshare,st3215";
         servo-id = <2>;
     };

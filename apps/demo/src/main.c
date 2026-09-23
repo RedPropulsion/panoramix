@@ -156,6 +156,7 @@ int main(void)
      LOG_INF("Starting main()");
     int ret;
 
+    #if 0 /* Preserve the startup test without moving the damaged servos. */
     int32_t angle_mdeg = 0;
 
     k_sleep(K_MSEC(500));
@@ -223,6 +224,8 @@ int main(void)
     ret = servo_get_position(pitch_servo, &angle_mdeg);
     LOG_INF("pitch get ret=%d pos=%d mdeg", ret, angle_mdeg);
     
+
+    #endif
 
     if (!device_is_ready(i2c_dev)) {
         LOG_ERR("I2C device not ready");
