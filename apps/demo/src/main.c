@@ -1,5 +1,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
+#include <zephyr/net/net_if.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/sys/util.h>
@@ -55,6 +56,50 @@ static void init_storage(void)
 #define LORA_NODE DT_NODELABEL(lora_sx1261)
 static const struct device *lora_dev = DEVICE_DT_GET(LORA_NODE);
 static struct lora_modem_config lora_tx_config;
+/* The Ethernet peer may power up after ObelICS. Only start once it is ready.
+ * Called from main after demo_init(), never from the LED/radio workqueue.
+ */
+static void mavlink_try_start(void)
+{
+    static bool started;
+    static bool waiting_logged;
+    const struct device *mav_dev =
+        DEVICE_DT_GET(DT_NODELABEL(mavlink_idefix));
+    const struct device *eth_dev =
+        DEVICE_DT_GET(DT_PHANDLE(DT_NODELABEL(mavlink_idefix), transport));
+    struct net_if *iface;
+    int ret;
+
+    /* Do not allocate another UDP context after a successful start. */
+    if (started) {
+        return;
+    }
+    if (!device_is_ready(mav_dev)) {
+        LOG_ERR("MAVLink device not ready; cannot start transport");
+        return;
+    }
+    iface = net_if_lookup_by_dev(eth_dev);
+    if (!iface) {
+        LOG_ERR("MAVLink Ethernet interface not found");
+        return;
+    }
+    /* Skip the wrapper's blocking network wait while Ethernet is down. */
+    if (!net_if_is_up(iface)) {
+        if (!waiting_logged) {
+            LOG_INF("MAVLink waiting for Ethernet; LoRa remains active");
+            waiting_logged = true;
+        }
+        return;
+    }
+    waiting_logged = false;
+    ret = demo_mavlink_init(mav_dev);
+    if (ret < 0) {
+        LOG_WRN("MAVLink start failed: %d; will retry next cycle", ret);
+        return;
+    }
+    started = true;
+    LOG_INF("MAVLink UDP ready: 192.168.10.2:14550 -> 192.168.10.1:14551");
+}
 
 /* ------------------------------------------------------------------ *
  * Neopixel
@@ -390,22 +435,6 @@ int main(void)
         return ret;
     }
 
-    /* Start the receiver only after the LED work items are initialized. */
-    const struct device *mav_dev =
-        DEVICE_DT_GET(DT_NODELABEL(mavlink_idefix));
-    if (!device_is_ready(mav_dev)) {
-        LOG_ERR("MAVLink device not ready");
-    } else {
-        ret = demo_mavlink_init(mav_dev);
-        if (ret < 0) {
-            LOG_ERR("MAVLink start failed: %d", ret);
-        } else {
-            LOG_INF("MAVLink UDP ready: 192.168.10.2:14550 -> 192.168.10.1:14551");
-        }
-    }
-
-    int lora_counter = 0;
-    int row=0;
     while (1) {
 
         // display_string("Running main loop...");
@@ -418,22 +447,9 @@ int main(void)
                 LOG_ERR("LoRa TX failed: %d", err);
             }
         }
+        /* demo_init() above must finish before enabling command callbacks. */
+        mavlink_try_start();
 
-        /* The demo module exclusively controls the LED strip, including OFF. */
-
-        int err = lora_recv(lora_dev, buf, sizeof(buf), K_SECONDS(2), &RSSI, &SNR);
-        if (err == -EAGAIN) {
-            LOG_DBG("No LoRa RX data yet");
-            // display_update_row(7, "No LoRa RX data");
-        } else if (err < 0) {
-          menu_update_lora_stats(lora_counter, err, 0, 0);
-            LOG_ERR("LoRa RX failed: %d", err);
-            // display_update_row(7, "LoRa RX failed: %d", err);
-        } else {
-          menu_update_lora_stats(lora_counter, err, (int16_t)RSSI, (int8_t)SNR);
-            LOG_INF("LoRa RX: %d bytes: %s", err, buf);
-            LOG_INF("RSSI: %d, SNR: %d", RSSI, SNR);
-            // display_update_row(7, "RSSI:%d SNR:%d", RSSI, SNR);
         }
         row = (row + 1) % 8; // cycle through display rows for updates
 
