@@ -18,6 +18,20 @@ void demo_neopixel_stop(void);
 void demo_off(void);
 int  demo_mavlink_init(const struct device *mav_dev);
 
+/* LoRa observations reported over Ethernet; the radio payload remains PING/PONG. */
+enum demo_lora_result {
+    DEMO_LORA_PONG = 1,
+    DEMO_LORA_TIMEOUT = 2,
+    DEMO_LORA_UNEXPECTED = 3,
+    DEMO_LORA_ERROR = 4,
+    DEMO_LORA_UNAVAILABLE = 5,
+};
+struct demo_lora_stats {
+    uint32_t sequence, tx, rx, pong, timeouts, errors;
+    int32_t result, rssi, snr, rtt_ms, age_ms;
+};
+void demo_mavlink_publish_lora(const struct demo_lora_stats *stats);
+
 #if defined(CONFIG_LIB_MENU)
 extern struct menu demo_menu;   /* hook for the main menu */
 #endif
