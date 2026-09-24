@@ -70,69 +70,75 @@ static struct lora_modem_config lora_cfg = {
     .packet_crc_disable = false,
 };
 
-/* First radio test: ObelICS sends four bytes PING, peer replies PONG. */
+/* Keep the existing WL55 firmware and four-byte PING/PONG protocol. */
+static struct demo_lora_stats lora_stats = {
+    .result = DEMO_LORA_UNAVAILABLE, .rtt_ms = -1, .age_ms = -1,
+};
+static int64_t lora_last_pong_ms = -1;
+
 static void lora_test_once(void)
 {
-    static uint32_t tx_count;
-    static uint32_t rx_count;
-    static int16_t last_rssi;
-    static int8_t last_snr;
     uint8_t tx_buf[] = "PING";
     uint8_t rx_buf[256];
     int16_t rssi;
     int8_t snr;
     int ret;
+    int64_t sent_at;
 
+    lora_stats.result = DEMO_LORA_ERROR;
+    lora_stats.rtt_ms = -1;
     lora_cfg.tx = true;
     ret = lora_config(lora_dev, &lora_cfg);
     if (ret < 0) {
         LOG_ERR("LoRa TX config failed: %d", ret);
         goto update_stats;
     }
-
-    /* Do not send the terminating NUL byte. */
+    sent_at = k_uptime_get();
     ret = lora_send(lora_dev, tx_buf, sizeof(tx_buf) - 1);
     if (ret < 0) {
         LOG_ERR("LoRa TX failed: %d", ret);
         goto update_stats;
     }
-    tx_count++;
-
-    /* Switch immediately to RX, before display updates or other work. */
+    lora_stats.tx++;
     lora_cfg.tx = false;
     ret = lora_config(lora_dev, &lora_cfg);
     if (ret < 0) {
         LOG_ERR("LoRa RX config failed: %d", ret);
         goto update_stats;
     }
-
-    /* The API accepts at most 255 bytes; reserve one more for NUL. */
     ret = lora_recv(lora_dev, rx_buf, sizeof(rx_buf) - 1,
                     K_SECONDS(2), &rssi, &snr);
-    LOG_INF("LoRa TX #%u: PING", (unsigned int)tx_count);
-
+    LOG_INF("LoRa TX #%u: PING", (unsigned int)lora_stats.tx);
     if (ret == -EAGAIN || ret == -ETIMEDOUT) {
+        lora_stats.timeouts++;
+        lora_stats.result = DEMO_LORA_TIMEOUT;
         LOG_INF("LoRa RX timeout: no reply");
     } else if (ret < 0) {
         LOG_ERR("LoRa RX failed: %d", ret);
     } else {
-        rx_count++;
-        last_rssi = rssi;
-        last_snr = snr;
-        rx_buf[ret] = '\0';
-        LOG_INF("LoRa RX #%u: %d bytes: %s",
-                (unsigned int)rx_count, ret, (char *)rx_buf);
-        LOG_INF("RSSI: %d dBm, SNR: %d dB", (int)rssi, (int)snr);
+        lora_stats.rx++;
         if (ret == 4 && memcmp(rx_buf, "PONG", 4) == 0) {
-            LOG_INF("LoRa PING/PONG OK");
+            lora_last_pong_ms = k_uptime_get();
+            lora_stats.pong++;
+            lora_stats.result = DEMO_LORA_PONG;
+            lora_stats.rssi = rssi;
+            lora_stats.snr = snr;
+            lora_stats.rtt_ms = (int32_t)(lora_last_pong_ms - sent_at);
+            LOG_INF("LoRa PING/PONG OK: RSSI %d dBm, SNR %d dB, RTT %d ms",
+                    (int)rssi, (int)snr, (int)lora_stats.rtt_ms);
         } else {
-            LOG_WRN("LoRa packet received, but expected four bytes PONG");
+            lora_stats.result = DEMO_LORA_UNEXPECTED;
+            LOG_WRN("LoRa received %d bytes, expected four bytes PONG", ret);
         }
     }
 
 update_stats:
-    /* RX counts valid packets, not bytes. Keep last metrics on timeout. */
-    menu_update_lora_stats(tx_count, rx_count, last_rssi, last_snr);
+    if (lora_stats.result == DEMO_LORA_ERROR) {
+        lora_stats.errors++;
+    }
+    /* Keep OLED packet counters; signal metrics refer only to valid PONGs. */
+    menu_update_lora_stats(lora_stats.tx, lora_stats.rx,
+                          lora_stats.rssi, lora_stats.snr);
 }
 
 /* The Ethernet peer may power up after ObelICS. Only start once it is ready.
@@ -512,9 +518,13 @@ int main(void)
         /* demo_init() above must finish before enabling command callbacks. */
         mavlink_try_start();
 
+        lora_stats.sequence++;
         if (lora_ok) {
             lora_test_once();
         }
+        lora_stats.age_ms = lora_last_pong_ms < 0 ? -1 :
+            (int32_t)MIN(k_uptime_get() - lora_last_pong_ms, INT32_MAX);
+        demo_mavlink_publish_lora(&lora_stats);
 
         /* The demo module exclusively controls the LED strip, including OFF. */
 
